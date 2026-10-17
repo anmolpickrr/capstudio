@@ -1,17 +1,25 @@
 """Speech-to-text with word-level timestamps.
 
-Two engines are supported:
-  * local  – faster-whisper (Whisper large-v3 by default). Runs on GPU when
-             available, otherwise CPU int8. Audio never leaves the server.
-  * openai – OpenAI's hosted whisper-1 API. Faster on machines without a GPU,
-             but audio is sent to a third party.
+Engines:
+  * groq   – Groq's hosted Whisper large-v3 (free tier available). Very fast;
+             audio is sent to Groq. Used automatically when GROQ_API_KEY is set.
+  * openai – OpenAI's hosted whisper-1. Audio is sent to OpenAI.
+  * local  – faster-whisper on this server. Runs on GPU when available,
+             otherwise CPU int8. Audio never leaves the server.
+
+With a hosted engine, the local model is kept as a backup (LOCAL_FALLBACK=1)
+and takes over when the hosted service is unreachable or rate-limited.
 """
 from __future__ import annotations
 
 import logging
 import os
 import re
+import subprocess
+import tempfile
 import threading
+import time
+from pathlib import Path
 from typing import Callable
 
 import httpx
@@ -20,8 +28,18 @@ from .spelling import convert_word
 
 log = logging.getLogger("captions.transcribe")
 
-ENGINE = os.environ.get("TRANSCRIBE_ENGINE", "local")
 WHISPER_MODEL = os.environ.get("WHISPER_MODEL", "large-v3")
+HOSTED = {
+    # engine: (API base URL, model, API key variable)
+    "groq": (os.environ.get("GROQ_API_BASE", "https://api.groq.com/openai/v1"), "whisper-large-v3",
+             "GROQ_API_KEY"),
+    "openai": ("https://api.openai.com/v1", "whisper-1", "OPENAI_API_KEY"),
+}
+ENGINE = os.environ.get("TRANSCRIBE_ENGINE") or ("groq" if os.environ.get("GROQ_API_KEY") else "local")
+LOCAL_FALLBACK = os.environ.get("LOCAL_FALLBACK", "1") == "1"
+# Hosted APIs accept files up to 25 MB; audio is split into chunks below that.
+CHUNK_BYTES = int(os.environ.get("HOSTED_CHUNK_BYTES", str(24 * 1024 * 1024)))
+CHUNK_SECONDS = 600
 
 # UI language id -> (whisper language code or None for auto, label, group)
 LANGUAGES: list[tuple[str, str | None, str, str]] = [
@@ -93,8 +111,16 @@ def transcribe(audio_path: str, duration: float, lang_id: str, vocabulary: str,
     if vocab:
         prompt = (prompt + " " + ", ".join(vocab) + ".").strip()
 
-    if ENGINE == "openai":
-        result = _openai(audio_path, code, prompt, progress)
+    engine = ENGINE
+    if engine in HOSTED:
+        try:
+            result = _hosted(engine, audio_path, duration, code, prompt, progress)
+        except HostedUnavailable as e:
+            if not LOCAL_FALLBACK:
+                raise TranscriptionError(str(e)) from e
+            log.warning("%s unavailable (%s); using the on-server model", engine, e)
+            engine = "local"
+            result = _local(audio_path, duration, code, prompt, vocab, progress)
     else:
         result = _local(audio_path, duration, code, prompt, vocab, progress)
 
@@ -114,6 +140,8 @@ def transcribe(audio_path: str, duration: float, lang_id: str, vocabulary: str,
         "languageProbability": result.get("probability"),
         "requested": lang_id,
         "spaced": result["language"] not in UNSPACED,
+        "engine": engine,
+        "fallback": engine != ENGINE,
         "words": words,
     }
 
@@ -138,10 +166,14 @@ _device: str | None = None
 
 
 def model_status() -> dict:
-    """Reported by /api/health so a deployment can confirm it is really on the GPU."""
-    if ENGINE != "local":
-        return {"engine": ENGINE, "model": "whisper-1"}
-    return {"engine": ENGINE, "model": WHISPER_MODEL, "device": _device, "modelLoaded": _model is not None}
+    """Reported by /api/health so a deployment can confirm what is running."""
+    status = {"engine": ENGINE}
+    if ENGINE in HOSTED:
+        status["hostedModel"] = HOSTED[ENGINE][1]
+        status["hostedKeySet"] = bool(os.environ.get(HOSTED[ENGINE][2]))
+    if ENGINE == "local" or LOCAL_FALLBACK:
+        status.update({"localModel": WHISPER_MODEL, "device": _device, "modelLoaded": _model is not None})
+    return status
 
 
 def _get_model():
@@ -163,11 +195,27 @@ def _get_model():
 
 
 def warm_up() -> None:
-    if ENGINE == "local":
-        threading.Thread(target=_get_model, daemon=True).start()
+    if ENGINE == "local" or LOCAL_FALLBACK:
+        threading.Thread(target=_safe_load, daemon=True).start()
+
+
+def _safe_load() -> None:
+    try:
+        _get_model()
+    except Exception:  # noqa: BLE001 - a missing backup model must not stop the app
+        log.exception("could not load the on-server model")
+
+
+# The on-server model uses every CPU core, so jobs take turns.
+_local_turn = threading.Semaphore(1)
 
 
 def _local(audio_path, duration, code, prompt, vocab, progress) -> dict:
+    with _local_turn:
+        return _local_run(audio_path, duration, code, prompt, vocab, progress)
+
+
+def _local_run(audio_path, duration, code, prompt, vocab, progress) -> dict:
     model = _get_model()
     segments, info = model.transcribe(
         audio_path,
@@ -195,45 +243,118 @@ def _local(audio_path, duration, code, prompt, vocab, progress) -> dict:
             "words": words}
 
 
-# -------------------------------------------------------------------- openai
+# ------------------------------------------------------------------ hosted
 
-def _openai(audio_path, code, prompt, progress) -> dict:
-    key = os.environ.get("OPENAI_API_KEY")
+
+class HostedUnavailable(RuntimeError):
+    """The hosted service can't be used right now (limits, outage, bad key)."""
+
+
+def _hosted(engine, audio_path, duration, code, prompt, progress) -> dict:
+    base, model, key_var = HOSTED[engine]
+    key = os.environ.get(key_var)
     if not key:
-        raise TranscriptionError("TRANSCRIBE_ENGINE=openai but OPENAI_API_KEY is not set")
-    progress(0.1)
-    data = [("model", "whisper-1"), ("response_format", "verbose_json"),
-            ("timestamp_granularities[]", "word"), ("timestamp_granularities[]", "segment")]
+        raise HostedUnavailable(f"{key_var} is not set")
+    progress(0.05)
+    with tempfile.TemporaryDirectory() as tmp:
+        chunks = _split_audio(audio_path, Path(tmp))
+        words, language = [], None
+        for i, (path, offset) in enumerate(chunks):
+            # The tail of the previous chunk keeps wording consistent across cuts.
+            tail = " ".join(w["text"] for w in words[-30:])
+            body = _post_transcription(base, model, key, path, code, (prompt + " " + tail).strip())
+            language = language or body.get("language")
+            for w in _words_from_response(body):
+                w["start"] = round(w["start"] + offset, 3)
+                w["end"] = round(w["end"] + offset, 3)
+                words.append(w)
+            progress(0.05 + 0.95 * (i + 1) / len(chunks))
+    lang = (language or code or "en").lower()
+    return {"language": _LANG_NAMES.get(lang, lang), "probability": None, "words": words}
+
+
+def _split_audio(audio_path: str, tmp: Path) -> list[tuple[str, float]]:
+    if os.path.getsize(audio_path) <= CHUNK_BYTES:
+        return [(audio_path, 0.0)]
+    total = float(subprocess.run(["ffprobe", "-v", "error", "-show_entries", "format=duration",
+                                  "-of", "csv=p=0", audio_path],
+                                 check=True, capture_output=True, text=True).stdout)
+    # Equal-length pieces, so no tiny leftover chunk at the end.
+    pieces = max(1, -(-int(total) // CHUNK_SECONDS))
+    listing = tmp / "chunks.csv"
+    subprocess.run(["ffmpeg", "-v", "error", "-i", audio_path, "-f", "segment",
+                    "-segment_time", f"{total / pieces + 0.5:.2f}", "-segment_list", str(listing),
+                    "-segment_list_type", "csv", "-c", "copy", str(tmp / "chunk%03d.mp3")],
+                   check=True, capture_output=True)
+    chunks = []
+    for line in listing.read_text().splitlines():
+        name, start, _end = line.split(",")[:3]
+        chunks.append((str(tmp / name), float(start)))
+    return chunks
+
+
+def _post_transcription(base, model, key, path, code, prompt) -> dict:
+    data = {"model": model, "response_format": "verbose_json",
+            "timestamp_granularities[]": ["word", "segment"], "temperature": "0"}
     if code:
-        data.append(("language", code))
+        data["language"] = code
     if prompt:
-        data.append(("prompt", prompt))
-    with open(audio_path, "rb") as f:
-        r = httpx.post("https://api.openai.com/v1/audio/transcriptions",
-                       headers={"Authorization": f"Bearer {key}"},
-                       data=data, files={"file": ("audio.mp3", f, "audio/mpeg")}, timeout=900)
-    if r.status_code != 200:
-        raise TranscriptionError(f"OpenAI transcription failed: {r.text[:300]}")
-    body = r.json()
-    raw = body.get("words", [])
-    # whisper-1 word entries carry no punctuation; restore it from segment text
-    # when the token counts line up.
-    words = []
-    for seg in body.get("segments", []):
-        inside = [w for w in raw if seg["start"] - 0.01 <= w["start"] < seg["end"] + 0.01
-                  and w not in words]
-        tokens = seg["text"].split()
-        if len(tokens) == len(inside):
-            for w, t in zip(inside, tokens):
-                w["word"] = t
-        words.extend(inside)
-    if not words:
-        words = raw
-    lang = (body.get("language") or code or "en").lower()
-    lang = _LANG_NAMES.get(lang, lang)
-    return {"language": lang, "probability": None,
-            "words": [{"text": w["word"].strip(), "start": round(w["start"], 3),
-                       "end": round(w["end"], 3), "conf": None} for w in words]}
+        data["prompt"] = prompt[-800:]  # APIs cap the prompt at ~224 tokens
+    for attempt in range(4):
+        try:
+            with open(path, "rb") as f:
+                r = httpx.post(f"{base}/audio/transcriptions", headers={"Authorization": f"Bearer {key}"},
+                               data=data, files={"file": ("audio.mp3", f, "audio/mpeg")}, timeout=600)
+        except httpx.HTTPError as e:
+            if attempt == 3:
+                raise HostedUnavailable(f"network error: {e}") from e
+            time.sleep(2 ** attempt)
+            continue
+        if r.status_code == 200:
+            return r.json()
+        if r.status_code == 429 or r.status_code >= 500:
+            wait = _retry_after(r)
+            if attempt < 3 and wait <= 30:
+                time.sleep(wait)
+                continue
+            raise HostedUnavailable(f"HTTP {r.status_code} (rate limit or outage)")
+        if r.status_code in (401, 403):
+            raise HostedUnavailable("the API key was rejected")
+        raise TranscriptionError(f"Transcription failed: {r.text[:300]}")
+    raise HostedUnavailable("no response")
+
+
+def _retry_after(r: httpx.Response) -> float:
+    try:
+        return float(r.headers.get("retry-after", "5"))
+    except ValueError:
+        return 60.0
+
+
+_NORM = re.compile(r"[\W_]+", re.UNICODE)
+
+
+def _words_from_response(body: dict) -> list[dict]:
+    """Word timings from the API, with punctuation and casing taken from the
+    segment text (word entries often come back bare), and words in segments
+    the model was unsure about flagged for review."""
+    raw = [w for w in body.get("words") or [] if str(w.get("word", "")).strip()]
+    segments = body.get("segments") or []
+    tokens: list[tuple[str, bool]] = []
+    for seg in segments:
+        unsure = seg.get("avg_logprob", 0) < -0.8
+        tokens += [(t, unsure) for t in seg.get("text", "").split()]
+    out, j = [], 0
+    for w in raw:
+        text, conf = w["word"].strip(), None
+        key = _NORM.sub("", text).lower()
+        # look a few tokens ahead so a single mismatch doesn't derail alignment
+        for k in range(j, min(j + 4, len(tokens))):
+            if _NORM.sub("", tokens[k][0]).lower() == key and key:
+                text, conf, j = tokens[k][0], (0.4 if tokens[k][1] else 0.95), k + 1
+                break
+        out.append({"text": text, "start": float(w["start"]), "end": float(w["end"]), "conf": conf})
+    return out
 
 
 _LANG_NAMES = {"english": "en", "hindi": "hi", "bengali": "bn", "tamil": "ta", "telugu": "te",

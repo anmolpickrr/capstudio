@@ -7,6 +7,7 @@ import tempfile
 
 import uvicorn
 
+os.environ.setdefault("AUTH_DISABLED", "1")
 os.environ.setdefault("DATA_DIR", tempfile.mkdtemp(prefix="caption-panel-e2e-"))
 sys.path.insert(0, str(pathlib.Path(__file__).resolve().parent.parent))
 from server import main, transcribe  # noqa: E402

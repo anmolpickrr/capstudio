@@ -29,8 +29,9 @@ from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
+from starlette.middleware.sessions import SessionMiddleware
 
-from . import media, transcribe
+from . import auth, media, transcribe
 from .fonts import FONTS_DIR, catalogue
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -43,7 +44,9 @@ JOB_TTL_MIN = float(os.environ.get("JOB_TTL_MIN", "120"))
 DOWNLOAD_GRACE_MIN = float(os.environ.get("DOWNLOAD_GRACE_MIN", "15"))
 SWEEP_SECONDS = 30
 
-transcribe_pool = ThreadPoolExecutor(int(os.environ.get("TRANSCRIBE_CONCURRENCY", "1")))
+# Hosted engines handle several videos at once; the on-server model one at a time.
+transcribe_pool = ThreadPoolExecutor(int(os.environ.get(
+    "TRANSCRIBE_CONCURRENCY", "3" if transcribe.ENGINE in transcribe.HOSTED else "1")))
 render_pool = ThreadPoolExecutor(int(os.environ.get("RENDER_CONCURRENCY", "2")))
 
 
@@ -54,11 +57,12 @@ class Task:
     error: str | None = None
     started: float | None = None
     finished: float | None = None
+    queued_at: float = field(default_factory=time.time)
 
-    def public(self) -> dict:
+    def public(self, ahead: int = 0) -> dict:
         return {"status": self.status, "progress": round(self.progress, 3), "error": self.error,
                 "elapsed": round((self.finished or time.time()) - self.started, 1)
-                if self.started else None}
+                if self.started else None, "ahead": ahead}
 
 
 @dataclass
@@ -67,6 +71,7 @@ class Job:
     dir: pathlib.Path
     name: str
     source: pathlib.Path
+    owner: str = ""
     info: dict = field(default_factory=dict)
     touched: float = field(default_factory=time.time)
     downloaded: float | None = None
@@ -80,9 +85,9 @@ class Job:
     def public(self) -> dict:
         return {
             "id": self.id, "name": self.name, "info": self.info,
-            "transcription": self.transcription.public(),
+            "transcription": self.transcription.public(queue_ahead(self, "transcription")),
             "transcript": self.transcript if self.transcription.status == "done" else None,
-            "render": {**self.render.public(), "file": self.output_name},
+            "render": {**self.render.public(queue_ahead(self, "render")), "file": self.output_name},
             "expiresAt": self.expires_at(),
         }
 
@@ -102,8 +107,21 @@ JOB_DIR_NAME = re.compile(r"^[0-9a-f]{32}$")
 MARKER = ".caption-panel"
 
 
-def get_job(job_id: str) -> Job:
+def queue_ahead(job: Job, kind: str) -> int:
+    """How many queued videos will start before this one."""
+    mine = getattr(job, kind)
+    if mine.status != "queued":
+        return 0
+    return sum(1 for other in list(jobs.values())
+               if other is not job and getattr(other, kind).status == "queued"
+               and getattr(other, kind).queued_at < mine.queued_at)
+
+
+def get_job(job_id: str, request: Request) -> Job:
     job = jobs.get(job_id)
+    user = auth.current_user(request)
+    if job and user and job.owner and job.owner != user["email"]:
+        job = None  # someone else's job looks exactly like a missing one
     if not job:
         raise HTTPException(404, "This job has expired or was deleted. Please upload the video again.")
     job.touched = time.time()
@@ -163,11 +181,24 @@ def prepare_data_dir() -> None:
 async def lifespan(_app: FastAPI):
     prepare_data_dir()
     threading.Thread(target=sweeper, daemon=True).start()
+    threading.Thread(target=catalogue, daemon=True).start()  # first page load needs it
     transcribe.warm_up()
     yield
 
 
 app = FastAPI(title="Caption Panel", docs_url=None, redoc_url=None, lifespan=lifespan)
+app.middleware("http")(auth.guard)
+# Added last so it runs first: the guard needs the session.
+app.add_middleware(SessionMiddleware, secret_key=auth.SESSION_SECRET, session_cookie="caption_panel",
+                   max_age=14 * 24 * 3600, same_site="lax",
+                   https_only=bool(os.environ.get("SPACE_HOST")
+                                   or os.environ.get("PUBLIC_URL", "").startswith("https")))
+app.include_router(auth.router)
+
+
+@app.get("/login")
+def login_page():
+    return FileResponse(ROOT / "static" / "login.html")
 
 
 # ------------------------------------------------------------------ config
@@ -177,7 +208,8 @@ app = FastAPI(title="Caption Panel", docs_url=None, redoc_url=None, lifespan=lif
 def config():
     return {
         "engine": transcribe.ENGINE,
-        "model": transcribe.WHISPER_MODEL if transcribe.ENGINE == "local" else "whisper-1",
+        "model": transcribe.HOSTED[transcribe.ENGINE][1] if transcribe.ENGINE in transcribe.HOSTED
+        else transcribe.WHISPER_MODEL,
         "languages": [{"id": i, "label": label, "group": g} for i, _, label, g in transcribe.LANGUAGES],
         "maxUploadMB": MAX_UPLOAD_MB,
         "retention": {"jobTtlMin": JOB_TTL_MIN, "downloadGraceMin": DOWNLOAD_GRACE_MIN},
@@ -228,7 +260,8 @@ async def create_job(request: Request):
         raise
     finally:
         uploading.discard(job_id)
-    job = Job(id=job_id, dir=jdir, name=name, source=src, info=info)
+    user = auth.current_user(request)
+    job = Job(id=job_id, dir=jdir, name=name, source=src, info=info, owner=user["email"] if user else "")
     with jobs_lock:
         jobs[job_id] = job
     log.info("job %s created (%.1f MB, %sx%s)", job_id, size / 1e6, info["width"], info["height"])
@@ -236,26 +269,27 @@ async def create_job(request: Request):
 
 
 @app.get("/api/jobs/{job_id}")
-def job_status(job_id: str):
-    return get_job(job_id).public()
+def job_status(job_id: str, request: Request):
+    return get_job(job_id, request).public()
 
 
 @app.delete("/api/jobs/{job_id}")
 @app.post("/api/jobs/{job_id}/delete")  # sendBeacon from a closing tab can only POST
-def remove_job(job_id: str):
+def remove_job(job_id: str, request: Request):
+    get_job(job_id, request)
     delete_job(job_id, "requested by editor")
     return {"deleted": True}
 
 
 @app.get("/api/jobs/{job_id}/source")
-def job_source(job_id: str):
-    job = get_job(job_id)
+def job_source(job_id: str, request: Request):
+    job = get_job(job_id, request)
     return FileResponse(job.source)
 
 
 @app.get("/api/jobs/{job_id}/proxy")
-def job_proxy(job_id: str):
-    job = get_job(job_id)
+def job_proxy(job_id: str, request: Request):
+    job = get_job(job_id, request)
     proxy = job.dir / "preview.mp4"
     with job.lock:
         if not proxy.exists():
@@ -272,8 +306,8 @@ class TranscribeReq(BaseModel):
 
 
 @app.post("/api/jobs/{job_id}/transcribe")
-def start_transcription(job_id: str, req: TranscribeReq):
-    job = get_job(job_id)
+def start_transcription(job_id: str, req: TranscribeReq, request: Request):
+    job = get_job(job_id, request)
     if req.language not in transcribe.LANG_INDEX:
         raise HTTPException(400, "Unsupported language")
     if job.transcription.status in ("queued", "running"):
@@ -288,7 +322,7 @@ def start_transcription(job_id: str, req: TranscribeReq):
 def _run_transcription(job: Job, req: TranscribeReq) -> None:
     task = job.transcription
     task.status, task.started = "running", time.time()
-    mp3 = transcribe.ENGINE == "openai"
+    mp3 = transcribe.ENGINE in transcribe.HOSTED
     audio = job.dir / ("audio.mp3" if mp3 else "audio.wav")
     try:
         media.extract_audio(str(job.source), str(audio), mp3=mp3)
@@ -328,8 +362,8 @@ ISO3 = {"en": "eng", "hi": "hin", "bn": "ben", "ta": "tam", "te": "tel", "mr": "
 
 
 @app.post("/api/jobs/{job_id}/render")
-def start_render(job_id: str, req: RenderReq):
-    job = get_job(job_id)
+def start_render(job_id: str, req: RenderReq, request: Request):
+    job = get_job(job_id, request)
     if job.render.status in ("queued", "running"):
         raise HTTPException(409, "A render is already in progress.")
     if req.mode == "burn" and not req.ass.startswith("[Script Info]"):
@@ -379,8 +413,8 @@ def _run_render(job: Job, req: RenderReq) -> None:
 
 
 @app.get("/api/jobs/{job_id}/download")
-def download(job_id: str):
-    job = get_job(job_id)
+def download(job_id: str, request: Request):
+    job = get_job(job_id, request)
     if job.render.status != "done" or not job.output or not job.output.exists():
         raise HTTPException(404, "Nothing to download yet.")
     if not job.downloaded:

@@ -57,7 +57,9 @@ for (const [file, tpl, ext] of CASES) {
     console.log(`✓ ${file} + ${tpl} → ${got.width}x${got.height} ${got.codec_name} ${got.pix_fmt} ${got.r_frame_rate}`);
   } catch (e) {
     failed++;
-    console.log(`✗ ${file} + ${tpl}: ${e.message}`);
+    const shot = join(OUT, `failure-${tpl}.png`);
+    await page.screenshot({ path: shot }).catch(() => {});
+    console.log(`✗ ${file} + ${tpl}: ${e.message}\n  screenshot: ${shot}`);
   } finally {
     await page.close();
   }

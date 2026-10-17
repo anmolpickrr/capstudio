@@ -175,3 +175,15 @@ body.demo #render-burn, body.demo #render-soft { opacity: .5; }
   .steps { display: none; }
 }
 .start-card > .live-only { display: flex; flex-direction: column; gap: 16px; }
+
+.user-chip { display: flex; align-items: center; gap: 8px; padding: 3px 4px 3px 3px; border: 1px solid var(--line); border-radius: 99px; font-size: 13px; }
+.avatar { width: 26px; height: 26px; border-radius: 50%; background: var(--accent) center / cover; display: grid; place-items: center; font-weight: 700; font-size: 12px; }
+.user-name { max-width: 140px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.signout { color: var(--muted); text-decoration: none; padding: 3px 9px; border-radius: 99px; }
+.signout:hover { color: var(--text); background: var(--panel-2); }
+
+.perks { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(3, 1fr); gap: 10px; }
+.perks li { background: var(--bg); border: 1px solid var(--line); border-radius: 10px; padding: 10px 12px; display: flex; flex-direction: column; gap: 2px; }
+.perks b { font-size: 13px; }
+.perks span { font-size: 12px; color: var(--muted); }
+@media (max-width: 640px) { .perks { grid-template-columns: 1fr; } }

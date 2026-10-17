@@ -6,6 +6,20 @@ A fast, self-hosted panel for editors. You upload a finished video, generate wor
 Upload → Generate → Style & edit (live preview) → Export → auto-delete
 ```
 
+## Live website (Hugging Face)
+
+The team website runs on a free Hugging Face Space and redeploys automatically on every push to `main` (`.github/workflows/deploy-huggingface.yml`).
+
+- **Captions:** Groq's hosted Whisper large-v3 (free tier). If Groq is busy or unreachable, the on-server `large-v3-turbo` model takes over.
+- **Sign-in:** Google, limited to @pickrr.com and @shiprocket.com accounts.
+
+One-time setup: add these GitHub secrets, then re-run the workflow. The run summary shows the site address.
+- `HF_TOKEN`
+- `GROQ_API_KEY`
+- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+
+Check a running site at `/api/health`.
+
 ## Online demo
 
 https://anmolpickrr.github.io/capstudio/ opens the editor in demo mode, using a sample video with pre-made captions. Your team can try templates, styling, animations, the live preview, caption editing and SRT/VTT/ASS downloads there.
@@ -51,7 +65,9 @@ Run a single server process (the default). Jobs are tracked in memory, so severa
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TRANSCRIBE_ENGINE` | `local` | `local` = faster-whisper on this server (audio never leaves it). `openai` = OpenAI whisper-1 API (needs `OPENAI_API_KEY`; audio is sent to OpenAI). |
+| `TRANSCRIBE_ENGINE` | `groq` if `GROQ_API_KEY` is set, else `local` | `groq` = Groq's hosted Whisper large-v3 (audio is sent to Groq). `openai` = OpenAI whisper-1 (needs `OPENAI_API_KEY`). `local` = faster-whisper on this server (audio never leaves it). |
+| `LOCAL_FALLBACK` | `1` | With a hosted engine, use the on-server model when the service is busy or unreachable. |
+| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `ALLOWED_EMAIL_DOMAINS` | — | Google sign-in. See `server/auth.py`. `AUTH_DISABLED=1` turns sign-in off for local development only. |
 | `WHISPER_MODEL` | `large-v3` | `large-v3` gives the best accuracy, including Indian languages. `large-v3-turbo` is about 3× faster with slightly lower accuracy and is a good choice for CPU-only servers. |
 | `JOB_TTL_MIN` | `120` | Delete a job this many minutes after its last activity, whatever its state. |
 | `DOWNLOAD_GRACE_MIN` | `15` | Delete a job this many minutes after its first download. This window allows a re-download. |

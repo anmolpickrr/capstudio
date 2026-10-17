@@ -45,6 +45,10 @@ async function api(path, opts = {}) {
     ...opts,
     headers: opts.body && typeof opts.body === 'string' ? { 'Content-Type': 'application/json' } : undefined,
   });
+  if (res.status === 401 && !DEMO) {
+    location.href = '/login';
+    throw new Error('Please sign in again.');
+  }
   const body = await res.json().catch(() => ({}));
   if (!res.ok) throw new Error(typeof body.detail === 'string' ? body.detail : `Request failed (${res.status})`);
   return body;
@@ -88,10 +92,17 @@ function describeSpecs(info) {
 
 // -------------------------------------------------------------------- init
 
+// Resolves once the language list and fonts have loaded.
+let configReady;
+
 async function init() {
-  const [config, fonts] = DEMO
-    ? await Promise.all([api('demo/config.json'), api('demo/fonts.json')])
-    : await Promise.all([api('/api/config'), api('/api/fonts')]);
+  // Listen for a dropped/picked video straight away, so a file chosen while the
+  // page is still loading isn't lost.
+  bindStart();
+  configReady = DEMO
+    ? Promise.all([api('demo/config.json'), api('demo/fonts.json')])
+    : Promise.all([api('/api/config'), api('/api/fonts')]);
+  const [config, fonts] = await configReady;
   state.config = config;
   state.fonts = fonts;
 
@@ -112,10 +123,24 @@ async function init() {
   const families = [...new Set(fonts.map((f) => f.family))];
   $('#font-family').innerHTML = families.map((f) => `<option>${f}</option>`).join('');
 
-  bindStart();
   bindEditor();
   setStep('upload');
   if (DEMO) setupDemo();
+  else showUser();
+}
+
+async function showUser() {
+  try {
+    const me = await api('/api/me');
+    if (!me) return;
+    const chip = $('#user-chip');
+    chip.hidden = false;
+    $('#user-name').textContent = me.name || me.email;
+    chip.title = me.email;
+    const avatar = $('#user-avatar');
+    if (me.picture) avatar.style.backgroundImage = `url("${me.picture}")`;
+    else avatar.textContent = (me.name || me.email).trim()[0].toUpperCase();
+  } catch { /* not signed in: api() already redirects */ }
 }
 
 function setupDemo() {
@@ -162,7 +187,8 @@ function bindStart() {
   });
 }
 
-function pickFile(file) {
+async function pickFile(file) {
+  await configReady;
   if (state.job) deleteJob();
   const maxBytes = state.config.maxUploadMB * 1024 * 1024;
   if (file.size > maxBytes) return toast(`That file is larger than ${state.config.maxUploadMB} MB.`, true);
@@ -188,6 +214,7 @@ function pickFile(file) {
       $('#file-specs').textContent = p < 1 ? `Uploading… ${Math.round(p * 100)}%` : 'Checking video…';
     };
     xhr.onload = () => {
+      if (xhr.status === 401) { location.href = '/login'; return; }
       let body = {};
       try { body = JSON.parse(xhr.responseText); } catch { /* ignore */ }
       if (xhr.status !== 200) return reject(new Error(body.detail || 'Upload failed'));
@@ -229,8 +256,10 @@ async function generate() {
       state.job = j;
       const t = j.transcription;
       $('#gen-bar').style.width = `${t.progress * 100}%`;
-      if (t.status === 'queued' || (t.status === 'running' && t.progress < 0.04)) {
-        $('#gen-text').textContent = 'Preparing audio and speech model…';
+      if (t.status === 'queued' && t.ahead > 0) {
+        $('#gen-text').textContent = `Waiting in line — ${t.ahead} video${t.ahead > 1 ? 's' : ''} ahead of yours…`;
+      } else if (t.status === 'queued' || (t.status === 'running' && t.progress < 0.04)) {
+        $('#gen-text').textContent = 'Preparing audio…';
       } else if (t.status === 'running') {
         const eta = t.elapsed && t.progress > 0.1 ? Math.max(0, t.elapsed / t.progress - t.elapsed) : null;
         $('#gen-text').textContent = `Transcribing… ${Math.round(t.progress * 100)}%${eta != null ? ` · about ${Math.ceil(eta)}s left` : ''}`;
@@ -262,6 +291,9 @@ function onTranscript(tr) {
   const label = new Intl.DisplayNames(['en'], { type: 'language' }).of(tr.language) || tr.language;
   const conf = tr.languageProbability ? ` (${Math.round(tr.languageProbability * 100)}% confident)` : '';
   toast(`${tr.requested === 'auto' ? 'Detected' : 'Language'}: ${label}${conf} · ${tr.words.length} words`);
+  if (tr.fallback) {
+    setTimeout(() => toast('The fast caption service was busy, so the backup engine was used. Please double-check the captions.', false, 7000), 3600);
+  }
   openEditor();
 }
 
@@ -827,6 +859,11 @@ async function render(mode) {
         return;
       }
       const eta = r.elapsed && r.progress > 0.05 ? Math.ceil(r.elapsed / r.progress - r.elapsed) : null;
+      if (r.status === 'queued') {
+        $('#render-text').textContent = r.ahead > 0
+          ? `Waiting in line — ${r.ahead} render${r.ahead > 1 ? 's' : ''} ahead of yours…` : 'Starting…';
+        continue;
+      }
       $('#render-text').textContent = mode === 'burn'
         ? `Rendering… ${Math.round(r.progress * 100)}%${eta != null ? ` · about ${eta}s left` : ''}`
         : 'Adding subtitle track…';

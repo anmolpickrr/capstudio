@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Caption Panel</title>
   <link rel="stylesheet" href="css/app.css">
+  <link rel="icon" href="favicon.svg" type="image/svg+xml">
 </head>
 <body>
   <header class="topbar">
@@ -19,6 +20,11 @@
     <div class="topbar-right">
       <span class="retention" id="retention" hidden></span>
       <button class="btn ghost" id="new-video" hidden>New video</button>
+      <div class="user-chip" id="user-chip" hidden>
+        <span class="avatar" id="user-avatar"></span>
+        <span class="user-name" id="user-name"></span>
+        <a class="signout" href="/auth/logout">Sign out</a>
+      </div>
     </div>
   </header>
 
@@ -47,6 +53,11 @@
         <div class="bar"><div class="bar-fill" id="upload-bar"></div></div>
       </div>
 
+      <ul class="perks">
+        <li><b>30+ languages</b><span>Indian languages, Hinglish, UK &amp; US English</span></li>
+        <li><b>12 styles, live preview</b><span>What you see is what you export</span></li>
+        <li><b>Original quality</b><span>Same resolution &amp; frame rate, files auto-deleted</span></li>
+      </ul>
       <div class="gen-options">
         <label class="field">
           <span>Spoken language</span>
