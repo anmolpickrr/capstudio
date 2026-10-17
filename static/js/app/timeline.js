@@ -108,7 +108,7 @@ export class Timeline {
     let loudest = 0.05;
     for (const v of peaks) if (v > loudest) loudest = v;
     const norm = 1 / loudest; // quiet recordings still show their shape
-    g.fillStyle = '#8f74ff';
+    g.fillStyle = '#9a9aa3';
     const cols = c.width;
     for (let px = 0; px < cols; px++) {
       const t0 = (px / cols) * (w / this.pps), t1 = ((px + 1) / cols) * (w / this.pps);

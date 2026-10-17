@@ -89,7 +89,7 @@ function card(tpl) {
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
   const thumb = h('div', { class: 'thumb' }, svg);
   if (state.frameThumb) thumb.style.backgroundImage = `url(${state.frameThumb})`;
-  else thumb.style.background = 'linear-gradient(135deg, #2a2340, #121220 55%, #2b1830)';
+  else thumb.style.background = 'linear-gradient(135deg, #26262a, #111112 55%, #1c1c1f)';
   const el = h('button', { class: 'tpl', type: 'button', 'data-id': tpl.id, 'aria-pressed': 'false',
     onclick: () => applyTemplate(tpl),
     onmouseenter: () => animate(tpl.id),
