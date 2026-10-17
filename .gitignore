@@ -1,5 +1,4 @@
 .venv/
 __pycache__/
-fonts/*.ttf
 tests/node_modules/
 tests/media/

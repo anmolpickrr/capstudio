@@ -4,6 +4,10 @@ import {
 import { CaptionRenderer } from './preview.js';
 import { BASE_STYLE, TEMPLATES, templateStyle } from './templates.js';
 
+// Demo mode: the editor runs without the server (e.g. on GitHub Pages) using a
+// sample video with pre-made captions from static/demo/.
+const DEMO = location.hostname.endsWith('github.io') || new URLSearchParams(location.search).has('demo');
+
 const $ = (sel, root = document) => root.querySelector(sel);
 const $$ = (sel, root = document) => [...root.querySelectorAll(sel)];
 
@@ -85,11 +89,13 @@ function describeSpecs(info) {
 // -------------------------------------------------------------------- init
 
 async function init() {
-  const [config, fonts] = await Promise.all([api('/api/config'), api('/api/fonts')]);
+  const [config, fonts] = DEMO
+    ? await Promise.all([api('demo/config.json'), api('demo/fonts.json')])
+    : await Promise.all([api('/api/config'), api('/api/fonts')]);
   state.config = config;
   state.fonts = fonts;
 
-  const css = fonts.map((f) => `@font-face{font-family:"cp-${f.id}";src:url("/fonts/${encodeURIComponent(f.file)}");font-display:block}`).join('\n');
+  const css = fonts.map((f) => `@font-face{font-family:"cp-${f.id}";src:url("${new URL(`../fonts/${encodeURIComponent(f.file)}`, location.href)}");font-display:block}`).join('\n');
   document.head.appendChild(Object.assign(document.createElement('style'), { textContent: css }));
   document.fonts.addEventListener('loadingdone', () => { renderer?.invalidate(); drawFrame(); });
 
@@ -109,6 +115,30 @@ async function init() {
   bindStart();
   bindEditor();
   setStep('upload');
+  if (DEMO) setupDemo();
+}
+
+function setupDemo() {
+  document.body.classList.add('demo');
+  $('#demo-badge').hidden = false;
+  $('#demo-start').hidden = false;
+  $$('.live-only').forEach((n) => { n.hidden = true; });
+  $('#demo-open').addEventListener('click', openDemo);
+}
+
+async function openDemo() {
+  const btn = $('#demo-open');
+  btn.disabled = true;
+  try {
+    const [job, transcript] = await Promise.all([api('demo/job.json'), api('demo/transcript.json')]);
+    state.job = job;
+    state.demoSrc = 'demo/sample.mp4';
+    onTranscript(transcript);
+  } catch (e) {
+    toast(`Could not load the sample: ${e.message}`, true);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ------------------------------------------------------------ upload/start
@@ -250,7 +280,9 @@ function openEditor() {
   renderer.setSize(info.width, info.height);
   $('#specs').textContent = `Original: ${describeSpecs(info)} — exported at exactly this resolution and frame rate.`;
   const v = video();
-  if (!v.src) {
+  if (!v.src && state.demoSrc) {
+    v.src = state.demoSrc;
+  } else if (!v.src) {
     v.src = URL.createObjectURL(state.file);
     v.addEventListener('error', useProxy, { once: true });
     v.addEventListener('loadedmetadata', () => { if (!v.videoWidth) useProxy(); }, { once: true });
@@ -261,7 +293,7 @@ function openEditor() {
   recompute();
   renderList();
   renderTimeline();
-  updateRetention();
+  if (!DEMO) updateRetention();
 }
 
 async function useProxy() {
@@ -347,7 +379,7 @@ function bindEditor() {
   });
 
   window.addEventListener('beforeunload', (e) => {
-    if (state.captions.length && !state.exported) { e.preventDefault(); e.returnValue = ''; }
+    if (state.captions.length && !state.exported && !DEMO) { e.preventDefault(); e.returnValue = ''; }
   });
   window.addEventListener('pagehide', deleteJob);
 }
@@ -761,6 +793,7 @@ function updateBurnDesc() {
 }
 
 async function render(mode) {
+  if (DEMO) return toast('Video export needs the full Caption Panel server. In this demo, caption files (SRT, VTT, ASS) can be downloaded.', false, 6000);
   if (!state.captions.length) return toast('There are no captions to render.', true);
   const box = $('#render-status');
   box.hidden = false;
@@ -822,7 +855,7 @@ async function updateRetention() {
 }
 
 function deleteJob() {
-  if (state.job) navigator.sendBeacon(`/api/jobs/${state.job.id}/delete`);
+  if (state.job && !DEMO) navigator.sendBeacon(`/api/jobs/${state.job.id}/delete`);
 }
 
 init().catch((e) => toast(`Failed to start: ${e.message}`, true, 10000));

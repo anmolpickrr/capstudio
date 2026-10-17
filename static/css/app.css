@@ -40,6 +40,12 @@ mark { background: none; color: inherit; text-decoration: underline wavy var(--w
 .steps li.done { color: var(--ok); }
 .topbar-right { margin-left: auto; display: flex; gap: 12px; align-items: center; }
 .retention { font-size: 12px; color: var(--muted); }
+.demo-badge { background: var(--warn); color: #1a1a1a; font-size: 11px; font-weight: 700; padding: 2px 8px; border-radius: 99px; text-transform: uppercase; }
+.demo-start h2 { margin: 0 0 8px; font-size: 20px; }
+.demo-start p { margin: 0 0 10px; }
+.demo-note { display: none; background: rgba(251, 191, 36, .1); border: 1px solid rgba(251, 191, 36, .35); color: var(--warn); border-radius: 8px; padding: 8px 10px; font-size: 12.5px; margin: 0 0 12px; }
+body.demo .demo-note { display: block; }
+body.demo #render-burn, body.demo #render-soft { opacity: .5; }
 
 /* buttons & fields */
 .btn {
@@ -168,3 +174,4 @@ mark { background: none; color: inherit; text-decoration: underline wavy var(--w
   .gen-options { grid-template-columns: 1fr; }
   .steps { display: none; }
 }
+.start-card > .live-only { display: flex; flex-direction: column; gap: 16px; }

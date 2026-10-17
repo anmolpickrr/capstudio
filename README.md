@@ -6,6 +6,14 @@ A fast, self-hosted panel for editors. You upload a finished video, generate wor
 Upload → Generate → Style & edit (live preview) → Export → auto-delete
 ```
 
+## Online demo
+
+https://anmolpickrr.github.io/capstudio/ opens the editor in demo mode, using a sample video with pre-made captions. Your team can try templates, styling, animations, the live preview, caption editing and SRT/VTT/ASS downloads there.
+
+GitHub Pages can only host fixed files, so the demo can't generate captions for your own videos or export a captioned video. Those need the server below.
+
+`scripts/build_demo.py` rebuilds the demo files (`static/demo/`). Adding `?demo` to any server URL opens the same demo locally.
+
 ## Run it
 
 Requirements: Python 3.10+, ffmpeg 6+ (built with libass, libx264 and libx265, which standard distro builds include).
