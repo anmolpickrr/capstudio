@@ -26,6 +26,12 @@ def fake(audio, duration, code, prompt, vocab, progress):
 
 
 transcribe._local = fake
+
+# Test-only pages (preview vs export comparison) at /__parity/.
+from fastapi.staticfiles import StaticFiles  # noqa: E402
+
+main.app.router.routes.insert(0, __import__("starlette.routing", fromlist=["Mount"]).Mount(
+    "/__parity", app=StaticFiles(directory=pathlib.Path(__file__).parent / "parity", html=True)))
 transcribe.warm_up = lambda: None
 uvicorn.run(main.app, host="127.0.0.1", port=int(sys.argv[1]) if len(sys.argv) > 1 else 8765,
             log_level="warning")

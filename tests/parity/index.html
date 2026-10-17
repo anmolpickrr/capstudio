@@ -1,0 +1,34 @@
+<!doctype html>
+<meta charset="utf-8">
+<style>html,body{margin:0;background:#000}svg{display:block}</style>
+<svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
+<script type="module">
+  // Test page: draws one caption frame with the preview renderer and returns
+  // the matching ASS script, for tests/parity.mjs to compare.
+  import { setCatalogue } from '/js/engine/fonts.js';
+  import { CaptionEngine, SvgRenderer, toASS } from '/js/engine/index.js';
+  import { withDefaults } from '/js/templates/base.js';
+
+  const fonts = await (await fetch('/api/fonts')).json();
+  setCatalogue(fonts);
+  const svg = document.getElementById('stage');
+  const renderer = new SvgRenderer(svg);
+  window.renderCase = async ({ style, caption, W, H, t, bg }) => {
+    const engine = new CaptionEngine();
+    const s = withDefaults(style);
+    await engine.set({ captions: [caption], style: s, W, H });
+    await engine.set({ captions: [caption], style: s, W, H }); // re-measure after fonts load
+    svg.setAttribute('width', W); svg.setAttribute('height', H);
+    renderer.setSize(W, H);
+    renderer.clear();
+    svg.style.background = bg;
+    renderer.render(engine.scenesAt(t), t);
+    await document.fonts.ready;
+    const b = engine.scene(caption).layout.block, m = 90;
+    const box = { x: Math.max(0, Math.floor(b.left - m)), y: Math.max(0, Math.floor(b.top - m)) };
+    box.w = Math.min(W, Math.ceil(b.right + m)) - box.x; box.h = Math.min(H, Math.ceil(b.bottom + m)) - box.y;
+    box.w -= box.w % 2; box.h -= box.h % 2;
+    return { ass: toASS([caption], s, W, H), box };
+  };
+  window.ready = true;
+</script>
