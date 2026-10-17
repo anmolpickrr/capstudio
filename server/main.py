@@ -10,6 +10,8 @@ Uploaded media and transcripts are never written anywhere else and never logged.
 """
 from __future__ import annotations
 
+import base64
+import json
 import logging
 import os
 import pathlib
@@ -20,6 +22,7 @@ import threading
 import time
 import urllib.parse
 import uuid
+import zlib
 from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 
@@ -81,13 +84,18 @@ class Job:
     output: pathlib.Path | None = None
     output_name: str | None = None
     lock: threading.Lock = field(default_factory=threading.Lock)
+    proc: object = None          # running ffmpeg export, so it can be cancelled
+    cancel_requested: bool = False
+    demo: str | None = None
 
     def public(self) -> dict:
         return {
             "id": self.id, "name": self.name, "info": self.info,
             "transcription": self.transcription.public(queue_ahead(self, "transcription")),
             "transcript": self.transcript if self.transcription.status == "done" else None,
-            "render": {**self.render.public(queue_ahead(self, "render")), "file": self.output_name},
+            "render": {**self.render.public(queue_ahead(self, "render")), "file": self.output_name,
+                       "size": self.output.stat().st_size if self.render.status == "done" and self.output
+                       and self.output.exists() else None},
             "expiresAt": self.expires_at(),
         }
 
@@ -210,7 +218,8 @@ def config():
         "engine": transcribe.ENGINE,
         "model": transcribe.HOSTED[transcribe.ENGINE][1] if transcribe.ENGINE in transcribe.HOSTED
         else transcribe.WHISPER_MODEL,
-        "languages": [{"id": i, "label": label, "group": g} for i, _, label, g in transcribe.LANGUAGES],
+        "languages": [{"id": i, "label": label, "group": g} for i, _, label, g in transcribe.LANGUAGES]
+        + [{"id": u, "label": label, "group": "Indian", "unsupported": True} for u, label in transcribe.UNSUPPORTED],
         "maxUploadMB": MAX_UPLOAD_MB,
         "retention": {"jobTtlMin": JOB_TTL_MIN, "downloadGraceMin": DOWNLOAD_GRACE_MIN},
     }
@@ -266,6 +275,47 @@ async def create_job(request: Request):
         jobs[job_id] = job
     log.info("job %s created (%.1f MB, %sx%s)", job_id, size / 1e6, info["width"], info["height"])
     return job.public()
+
+
+DEMO_DIR = ROOT / "static" / "demo"
+
+
+def _demo_ids() -> list[str]:
+    index = DEMO_DIR / "index.json"
+    return json.loads(index.read_text()) if index.exists() else []
+
+
+@app.get("/api/demo")
+def demo_list():
+    """Example projects for the Demo section (prepared captions, clearly labelled)."""
+    out = []
+    for demo_id in _demo_ids():
+        meta = json.loads((DEMO_DIR / demo_id / "meta.json").read_text())
+        meta.update({"video": f"/demo/{demo_id}/video.mp4", "poster": f"/demo/{demo_id}/poster.jpg",
+                     "captions": f"/demo/{demo_id}/captions.json"})
+        out.append(meta)
+    return out
+
+
+@app.post("/api/demo/{demo_id}/project")
+def demo_project(demo_id: str, request: Request):
+    """Opens an example as a temporary project, so the full editor and export work on it."""
+    if demo_id not in _demo_ids():
+        raise HTTPException(404, "That example doesn't exist.")
+    src_dir = DEMO_DIR / demo_id
+    job_id = uuid.uuid4().hex
+    jdir = DATA_DIR / job_id
+    jdir.mkdir(parents=True)
+    src = jdir / "source.mp4"
+    shutil.copyfile(src_dir / "video.mp4", src)
+    meta = json.loads((src_dir / "meta.json").read_text())
+    user = auth.current_user(request)
+    job = Job(id=job_id, dir=jdir, name=f"{meta['title']}.mp4", source=src, info=meta["info"],
+              owner=user["email"] if user else "", demo=demo_id)
+    with jobs_lock:
+        jobs[job_id] = job
+    transcript = json.loads((src_dir / "captions.json").read_text())
+    return {**job.public(), "transcript": transcript}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -349,6 +399,7 @@ def _run_transcription(job: Job, req: TranscribeReq) -> None:
 class RenderReq(BaseModel):
     mode: str = Field("burn", pattern="^(burn|soft)$")
     ass: str = Field("", max_length=20_000_000)
+    ass_gz: str = Field("", max_length=60_000_000)  # base64 gzip of the ASS script
     srt: str = Field("", max_length=20_000_000)
     quality: str = Field("high", pattern="^(max|high|fast)$")
     language: str = "und"
@@ -366,18 +417,47 @@ def start_render(job_id: str, req: RenderReq, request: Request):
     job = get_job(job_id, request)
     if job.render.status in ("queued", "running"):
         raise HTTPException(409, "A render is already in progress.")
+    if req.ass_gz:
+        req.ass = _gunzip(req.ass_gz)
     if req.mode == "burn" and not req.ass.startswith("[Script Info]"):
         raise HTTPException(400, "Invalid caption data.")
     if req.mode == "soft" and not req.srt.strip():
         raise HTTPException(400, "There are no captions to embed.")
     job.render = Task(status="queued")
     job.downloaded = None
+    job.cancel_requested = False
     render_pool.submit(_run_render, job, req)
+    return job.public()
+
+
+def _gunzip(data: str, limit: int = 400_000_000) -> str:
+    try:
+        d = zlib.decompressobj(wbits=31)
+        raw = d.decompress(base64.b64decode(data), limit)
+        if d.unconsumed_tail:
+            raise HTTPException(413, "The caption data is too large.")
+        return raw.decode("utf-8")
+    except (ValueError, zlib.error, UnicodeDecodeError):
+        raise HTTPException(400, "Invalid caption data.")
+
+
+@app.post("/api/jobs/{job_id}/render/cancel")
+def cancel_render(job_id: str, request: Request):
+    job = get_job(job_id, request)
+    job.cancel_requested = True
+    proc = job.proc
+    if proc is not None and proc.poll() is None:
+        proc.terminate()
+    if job.render.status == "queued":
+        job.render.status = "cancelled"
     return job.public()
 
 
 def _run_render(job: Job, req: RenderReq) -> None:
     task = job.render
+    if job.cancel_requested or task.status == "cancelled":
+        task.status = "cancelled"
+        return
     task.status, task.started = "running", time.time()
     stem = pathlib.Path(job.name).stem
     src_ext = job.source.suffix
@@ -394,7 +474,7 @@ def _run_render(job: Job, req: RenderReq) -> None:
                 job.touched = time.time()
 
             media.burn(str(job.source), "captions.ass", str(out), job.info, venc, str(job.dir),
-                       progress)
+                       progress, on_start=lambda p: setattr(job, "proc", p))
             job.output_name = f"{stem}_captioned{ext}"
         else:
             (job.dir / "captions.srt").write_text(req.srt, encoding="utf-8")
@@ -405,11 +485,34 @@ def _run_render(job: Job, req: RenderReq) -> None:
             job.output_name = f"{stem}_subtitled{ext}"
         job.output = out
         task.progress, task.status = 1.0, "done"
+    except media.Cancelled:
+        task.status = "cancelled"
+        _discard_output(job)
     except Exception as e:  # noqa: BLE001
         log.exception("render failed for job %s", job.id)
         task.status, task.error = "error", str(e)
+        _discard_output(job)
     finally:
+        job.proc = None
         task.finished = time.time()
+
+
+def _discard_output(job: Job) -> None:
+    """A failed or cancelled export leaves no partial file behind."""
+    for f in job.dir.glob("output.*"):
+        f.unlink(missing_ok=True)
+    job.output = None
+
+
+@app.get("/api/jobs/{job_id}/waveform")
+def job_waveform(job_id: str, request: Request):
+    job = get_job(job_id, request)
+    cache = job.dir / "waveform.json"
+    with job.lock:
+        if not cache.exists():
+            rate = 50
+            cache.write_text(json.dumps({"rate": rate, "peaks": media.waveform(str(job.source), rate)}))
+    return JSONResponse(json.loads(cache.read_text()))
 
 
 @app.get("/api/jobs/{job_id}/download")

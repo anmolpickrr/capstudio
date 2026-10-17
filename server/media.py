@@ -86,7 +86,9 @@ QUALITY = {
 X264_PIX = {"yuv420p", "yuvj420p", "yuv422p", "yuv444p", "yuv420p10le", "yuv422p10le",
             "yuv444p10le"}
 X265_PIX = X264_PIX | {"yuv420p12le", "yuv422p12le", "yuv444p12le"}
-MP4_AUDIO = {"aac", "mp3", "ac3", "eac3", "alac", "opus", "flac"}
+# Audio formats every editor and player accepts inside MP4 (Opus/FLAC in MP4 break
+# QuickTime and Premiere), so others are converted to AAC at a transparent bitrate.
+MP4_AUDIO = {"aac", "mp3", "ac3", "eac3", "alac"}
 PRORES_PROFILES = {"Proxy": "0", "LT": "1", "Standard": "2", "HQ": "3", "4444": "4",
                    "4444 XQ": "5", "XQ": "5"}
 
@@ -128,14 +130,14 @@ def _escape_filter_path(p: str) -> str:
 
 
 def burn(src: str, ass_name: str, dest: str, info: dict, venc: list[str], cwd: str,
-         progress: Callable[[float], None]) -> None:
+         progress: Callable[[float], None], on_start: Callable | None = None) -> None:
     ext = "." + dest.rsplit(".", 1)[1]
     vf = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
     cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
            "-i", src, "-map", "0:v:0", "-map", "0:a?", "-vf", vf, *venc,
            "-fps_mode", "passthrough", *_audio_args(info, ext),
            "-map_metadata", "0", "-movflags", "+faststart", dest]
-    _run_with_progress(cmd, info["duration"], progress, cwd)
+    _run_with_progress(cmd, info["duration"], progress, cwd, on_start)
 
 
 def mux_soft(src: str, srt: str, dest: str, info: dict, lang3: str) -> None:
@@ -153,18 +155,47 @@ def _run(cmd: list[str]) -> None:
         raise MediaError(_last_error(r.stderr))
 
 
-def _run_with_progress(cmd, duration, progress, cwd) -> None:
+class Cancelled(MediaError):
+    pass
+
+
+def _run_with_progress(cmd, duration, progress, cwd, on_start=None) -> None:
     proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
                             cwd=cwd)
+    if on_start:
+        on_start(proc)
     for line in proc.stdout:
         m = re.match(r"out_time_us=(\d+)", line)
         if m and duration:
             progress(min(int(m.group(1)) / 1e6 / duration, 0.995))
     err = proc.stderr.read()
-    if proc.wait() != 0:
+    code = proc.wait()
+    if code < 0:
+        raise Cancelled("Export cancelled.")
+    if code != 0:
         raise MediaError(_last_error(err))
 
 
 def _last_error(stderr: str) -> str:
     lines = [ln for ln in stderr.strip().splitlines() if ln.strip()]
     return "ffmpeg failed: " + (lines[-1][:300] if lines else "unknown error")
+
+
+def waveform(src: str, rate: int = 50) -> list[float]:
+    """Peak level of the audio, `rate` values per second (0..1), for the timeline."""
+    window = 8000 // rate
+    r = subprocess.run(["ffmpeg", "-v", "error", "-i", src, "-vn", "-af",
+                        f"aformat=channel_layouts=mono,aresample=8000,asetnsamples=n={window}:p=0,"
+                        "astats=metadata=1:reset=1,"
+                        "ametadata=print:key=lavfi.astats.Overall.Peak_level:file=-", "-f", "null", "-"],
+                       capture_output=True, text=True)
+    peaks = []
+    for line in r.stdout.splitlines():
+        if line.startswith("lavfi.astats.Overall.Peak_level="):
+            v = line.split("=", 1)[1]
+            try:
+                db = float(v)
+            except ValueError:
+                db = -120.0
+            peaks.append(round(max(0.0, min(1.0, 10 ** (db / 20))), 3))
+    return peaks

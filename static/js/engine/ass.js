@@ -6,7 +6,7 @@ import { animating, breakpoints } from './motion.js';
 import { buildScene, elementState, GRADIENT_BANDS } from './scene.js';
 import { bandColors } from './svg.js';
 
-const STEP = 1 / 50;          // sampling step while something is moving (seconds)
+const STEP = 1 / 30;          // sampling step while something is moving (one per frame at 30 fps)
 const n2 = (v) => +v.toFixed(2);
 const assTime = (s) => {
   const cs = Math.max(0, Math.round(s * 100));

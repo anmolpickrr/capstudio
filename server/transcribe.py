@@ -81,6 +81,8 @@ LANGUAGES: list[tuple[str, str | None, str, str]] = [
     ("vi", "vi", "Vietnamese", "International"),
 ]
 LANG_INDEX = {lid: (code, label) for lid, code, label, _ in LANGUAGES}
+# Shown in the language list but not selectable: the speech model can't transcribe them yet.
+UNSUPPORTED = [("or", "Odia (ଓଡ଼ିଆ) — not supported yet")]
 
 # Scripts written without spaces between words.
 UNSPACED = {"zh", "ja", "th", "lo", "my", "km", "yue"}

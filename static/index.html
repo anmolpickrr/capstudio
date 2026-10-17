@@ -3,248 +3,32 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Caption Panel</title>
-  <link rel="stylesheet" href="css/app.css">
+  <title>Caption Studio</title>
   <link rel="icon" href="favicon.svg" type="image/svg+xml">
+  <link rel="stylesheet" href="css/studio.css">
 </head>
 <body>
-  <header class="topbar">
-    <div class="brand"><span class="logo">CC</span> Caption Panel</div>
-    <ol class="steps" id="steps">
-      <li data-step="upload">Upload</li>
-      <li data-step="generate">Generate</li>
-      <li data-step="edit">Style &amp; edit</li>
-      <li data-step="export">Export</li>
-    </ol>
-    <span class="demo-badge" id="demo-badge" hidden>Demo</span>
-    <div class="topbar-right">
-      <span class="retention" id="retention" hidden></span>
-      <button class="btn ghost" id="new-video" hidden>New video</button>
-      <div class="user-chip" id="user-chip" hidden>
+  <div class="app">
+    <header class="header">
+      <a class="brand" href="#/studio" aria-label="Caption Studio home">
+        <span class="brand-mark" id="brand-mark"></span>
+        <span>Caption Studio</span>
+      </a>
+      <nav class="nav" aria-label="Sections">
+        <a href="#/studio" data-route="studio">Studio</a>
+        <a href="#/demo" data-route="demo">Demo</a>
+      </nav>
+      <span class="header-spacer"></span>
+      <span class="privacy-chip" id="privacy-chip"></span>
+      <div class="user" id="user" hidden>
         <span class="avatar" id="user-avatar"></span>
         <span class="user-name" id="user-name"></span>
-        <a class="signout" href="/auth/logout">Sign out</a>
+        <a class="btn ghost sm" href="/auth/logout">Sign out</a>
       </div>
-    </div>
-  </header>
-
-  <!-- Upload + generate -->
-  <main id="screen-start" class="screen start">
-    <section class="card start-card">
-      <div class="demo-start" id="demo-start" hidden>
-        <h2>Try the Caption Panel editor</h2>
-        <p>This demo opens a sample video with captions already generated, so you can try templates, styling, animations, the live preview and caption editing.</p>
-        <p class="muted">Generating captions for your own videos and downloading the captioned video need the full Caption Panel server, which isn't part of this demo.</p>
-        <button class="btn primary big" id="demo-open">Open the sample video</button>
-      </div>
-      <div class="live-only">
-      <label class="dropzone" id="dropzone">
-        <input type="file" id="file-input" accept="video/*,.mov,.mkv,.mxf" hidden>
-        <div class="dz-icon">⬆</div>
-        <div class="dz-title">Drop your final video here</div>
-        <div class="dz-sub">or click to browse · MP4, MOV, MKV, WebM, ProRes · resolution &amp; frame rate are kept as-is</div>
-      </label>
-
-      <div class="file-row" id="file-row" hidden>
-        <div class="file-meta">
-          <div class="file-name" id="file-name"></div>
-          <div class="file-specs" id="file-specs">Uploading…</div>
-        </div>
-        <div class="bar"><div class="bar-fill" id="upload-bar"></div></div>
-      </div>
-
-      <ul class="perks">
-        <li><b>30+ languages</b><span>Indian languages, Hinglish, UK &amp; US English</span></li>
-        <li><b>12 styles, live preview</b><span>What you see is what you export</span></li>
-        <li><b>Original quality</b><span>Same resolution &amp; frame rate, files auto-deleted</span></li>
-      </ul>
-      <div class="gen-options">
-        <label class="field">
-          <span>Spoken language</span>
-          <select id="language"></select>
-        </label>
-        <label class="field">
-          <span>Names &amp; terms <em>(optional, improves accuracy)</em></span>
-          <input id="vocabulary" placeholder="e.g. Pickrr, Shiprocket, Rahul Sharma">
-        </label>
-      </div>
-      <button class="btn primary big" id="generate" disabled>Generate captions</button>
-      <div class="gen-status" id="gen-status" hidden>
-        <div class="bar"><div class="bar-fill" id="gen-bar"></div></div>
-        <div class="muted" id="gen-text"></div>
-      </div>
-      <p class="privacy" id="privacy"></p>
-      </div>
-    </section>
-  </main>
-
-  <!-- Editor -->
-  <main id="screen-editor" class="screen editor" hidden>
-    <section class="stage-col">
-      <div class="stage" id="stage">
-        <video id="video" playsinline preload="auto"></video>
-        <svg id="overlay" class="overlay" xmlns="http://www.w3.org/2000/svg" preserveAspectRatio="xMidYMid meet"></svg>
-      </div>
-      <div class="transport">
-        <button class="btn icon" id="play" title="Play / pause (Space)">▶</button>
-        <span class="time" id="time">0:00.0 / 0:00.0</span>
-        <div class="timeline" id="timeline">
-          <div class="tl-caps" id="tl-caps"></div>
-          <div class="tl-head" id="tl-head"></div>
-        </div>
-        <button class="btn icon" id="mute" title="Mute">🔊</button>
-      </div>
-      <div class="specs muted" id="specs"></div>
-    </section>
-
-    <aside class="side">
-      <nav class="tabs" id="tabs">
-        <button data-tab="templates" class="active">Templates</button>
-        <button data-tab="style">Style</button>
-        <button data-tab="captions">Captions</button>
-        <button data-tab="export">Export</button>
-      </nav>
-
-      <div class="tab-body" data-tab="templates">
-        <div class="tpl-grid" id="tpl-grid"></div>
-      </div>
-
-      <div class="tab-body" data-tab="style" hidden>
-        <div class="font-note" id="font-note" hidden></div>
-        <div class="group">
-          <h4>Text</h4>
-          <div class="row2">
-            <label class="field"><span>Font</span><select id="font-family"></select></label>
-            <label class="field"><span>Weight</span><select id="font-weight"></select></label>
-          </div>
-          <label class="field range"><span>Size <b data-out="size"></b></span><input type="range" min="20" max="200" step="1" data-k="size"></label>
-          <div class="row3">
-            <label class="field color"><span>Text</span><input type="color" data-k="color"></label>
-            <label class="field color"><span>Highlight</span><input type="color" data-k="highlightColor"></label>
-            <label class="field"><span>Case</span>
-              <select data-k="textCase"><option value="none">As spoken</option><option value="upper">UPPERCASE</option><option value="lower">lowercase</option></select>
-            </label>
-          </div>
-          <label class="field range"><span>Letter spacing <b data-out="letterSpacing"></b></span><input type="range" min="-4" max="20" step="0.5" data-k="letterSpacing"></label>
-          <label class="check"><input type="checkbox" data-k="stripPunctuation"> Hide punctuation</label>
-        </div>
-
-        <div class="group">
-          <h4>Outline, shadow &amp; glow</h4>
-          <div class="row2">
-            <label class="field range"><span>Outline <b data-out="outline"></b></span><input type="range" min="0" max="16" step="0.5" data-k="outline"></label>
-            <label class="field color"><span>Colour</span><input type="color" data-k="outlineColor"></label>
-          </div>
-          <div class="row2">
-            <label class="field range"><span>Shadow <b data-out="shadow"></b></span><input type="range" min="0" max="16" step="0.5" data-k="shadow"></label>
-            <label class="field color"><span>Colour</span><input type="color" data-k="shadowColor"></label>
-          </div>
-          <label class="field range"><span>Shadow opacity <b data-out="shadowOpacity"></b></span><input type="range" min="0" max="1" step="0.05" data-k="shadowOpacity"></label>
-          <label class="field range"><span>Glow / softness <b data-out="blur"></b></span><input type="range" min="0" max="20" step="0.5" data-k="blur"></label>
-        </div>
-
-        <div class="group">
-          <h4>Background box</h4>
-          <label class="check"><input type="checkbox" data-k="box"> Show box behind text</label>
-          <div class="row2">
-            <label class="field color"><span>Box colour</span><input type="color" data-k="boxColor"></label>
-            <label class="field range"><span>Opacity <b data-out="boxOpacity"></b></span><input type="range" min="0" max="1" step="0.05" data-k="boxOpacity"></label>
-          </div>
-          <label class="field range"><span>Padding <b data-out="boxPadding"></b></span><input type="range" min="0" max="40" step="1" data-k="boxPadding"></label>
-        </div>
-
-        <div class="group">
-          <h4>Placement</h4>
-          <div class="seg" data-k="placement">
-            <button value="top">Top</button><button value="middle">Middle</button><button value="bottom">Bottom</button>
-          </div>
-          <label class="field range"><span>Offset <b data-out="offset"></b></span><input type="range" min="-40" max="45" step="0.5" data-k="offset"></label>
-          <p class="hint">Tip: drag the caption in the preview to move it.</p>
-        </div>
-
-        <div class="group">
-          <h4>Animation</h4>
-          <div class="row2">
-            <label class="field"><span>Entrance</span><select data-k="animation" id="anim-select"></select></label>
-            <label class="field"><span>Word effect</span>
-              <select data-k="wordEffect">
-                <option value="none">None</option>
-                <option value="highlight">Highlight spoken word</option>
-                <option value="progressive">Karaoke fill</option>
-                <option value="reveal">Word-by-word reveal</option>
-              </select>
-            </label>
-          </div>
-        </div>
-
-        <div class="group">
-          <h4>Caption length</h4>
-          <label class="field range"><span>Max words per caption <b data-out="maxWords"></b></span><input type="range" min="1" max="20" step="1" data-k="maxWords" data-rechunk></label>
-          <div class="row2">
-            <label class="field range"><span>Chars per line <b data-out="maxCharsPerLine"></b></span><input type="range" min="8" max="60" step="1" data-k="maxCharsPerLine" data-rechunk></label>
-            <label class="field range"><span>Lines <b data-out="maxLines"></b></span><input type="range" min="1" max="3" step="1" data-k="maxLines" data-rechunk></label>
-          </div>
-        </div>
-      </div>
-
-      <div class="tab-body" data-tab="captions" hidden>
-        <div class="cap-tools">
-          <input id="find" placeholder="Find">
-          <input id="replace" placeholder="Replace with">
-          <button class="btn" id="replace-all">Replace all</button>
-        </div>
-        <div class="cap-tools">
-          <span class="muted">Sync</span>
-          <button class="btn small" data-shift="-0.1">−0.1s</button>
-          <button class="btn small" data-shift="-0.02">−20ms</button>
-          <button class="btn small" data-shift="0.02">+20ms</button>
-          <button class="btn small" data-shift="0.1">+0.1s</button>
-          <span class="spacer"></span>
-          <button class="btn small" id="undo" title="Undo (Ctrl+Z)">↶ Undo</button>
-        </div>
-        <p class="hint" id="lowconf-hint" hidden>Words the model was unsure about are <mark>underlined</mark>. Check them.</p>
-        <div class="cap-list" id="cap-list"></div>
-      </div>
-
-      <div class="tab-body" data-tab="export" hidden>
-        <p class="demo-note">Demo: video export is switched off here. The caption file downloads below work.</p>
-        <div class="group">
-          <h4>Video with captions burned in</h4>
-          <p class="hint" id="burn-desc"></p>
-          <div class="seg" id="quality">
-            <button value="max">Maximum</button><button value="high" class="active">High</button><button value="fast">Fast</button>
-          </div>
-          <button class="btn primary big" id="render-burn">Render video</button>
-        </div>
-        <div class="group">
-          <h4>Video with subtitle track (no re-encode)</h4>
-          <p class="hint">Bit-for-bit original picture with a selectable subtitle track. Fastest option; styling is set by the player.</p>
-          <button class="btn" id="render-soft">Create subtitled video</button>
-        </div>
-        <div class="render-status" id="render-status" hidden>
-          <div class="bar"><div class="bar-fill" id="render-bar"></div></div>
-          <div class="muted" id="render-text"></div>
-          <a class="btn primary big" id="download" hidden>Download</a>
-        </div>
-        <div class="group">
-          <h4>Caption files</h4>
-          <div class="btn-row">
-            <button class="btn" data-file="srt">SRT</button>
-            <button class="btn" data-file="vtt">WebVTT</button>
-            <button class="btn" data-file="ass">ASS (styled)</button>
-            <button class="btn" data-file="txt">Transcript</button>
-          </div>
-        </div>
-        <div class="group danger live-only">
-          <h4>Privacy</h4>
-          <p class="hint" id="retention-desc"></p>
-          <button class="btn" id="delete-now">Delete my files now</button>
-        </div>
-      </div>
-    </aside>
-  </main>
-
-  <div class="toast" id="toast" hidden></div>
-  <script type="module" src="js/app.js"></script>
+    </header>
+    <main id="view" class="studio"></main>
+  </div>
+  <dialog id="export-dialog"></dialog>
+  <script type="module" src="js/app/main.js"></script>
 </body>
 </html>

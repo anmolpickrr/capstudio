@@ -25,8 +25,9 @@ RUN pip install --no-cache-dir -r requirements.txt \
  && if [ "$GPU" = "1" ]; then pip install --no-cache-dir -r requirements-gpu.txt; fi
 ENV LD_LIBRARY_PATH=/opt/venv/lib/python3.12/site-packages/nvidia/cublas/lib:/opt/venv/lib/python3.12/site-packages/nvidia/cudnn/lib
 
-COPY scripts scripts
-RUN python scripts/fetch_fonts.py
+# Fonts are committed (built by scripts/fetch_fonts.py), so the image uses
+# exactly the files the preview was tested with.
+COPY fonts fonts
 
 # Bake the speech model into the image so the first job doesn't wait for a
 # ~3 GB download. PRELOAD_MODEL=0 skips this (the model then downloads on start).

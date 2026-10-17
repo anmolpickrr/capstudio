@@ -17,8 +17,9 @@ WORKDIR /app
 COPY requirements.txt ./
 RUN pip install --no-cache-dir -r requirements.txt
 
-COPY scripts scripts
-RUN python scripts/fetch_fonts.py
+# Fonts are committed (built by scripts/fetch_fonts.py), so the image uses
+# exactly the files the preview was tested with.
+COPY fonts fonts
 
 ARG PRELOAD_MODEL=1
 ENV WHISPER_MODEL=large-v3-turbo

@@ -1,12 +1,15 @@
 {
- "id": "demo",
- "name": "caption-panel-sample.mp4",
+ "id": "studio-talk",
+ "title": "Talking-head tips",
+ "subtitle": "English (UK) · 1:1 square",
+ "language": "en",
+ "template": "magazine",
  "info": {
   "width": 1080,
-  "height": 1920,
+  "height": 1080,
   "rotation": 0,
   "fps": 30.0,
-  "duration": 26.366667,
+  "duration": 15.866667,
   "vcodec": "h264",
   "profile": "High",
   "pixFmt": "yuv420p",
@@ -14,9 +17,10 @@
   "colorPrimaries": null,
   "colorTransfer": null,
   "colorRange": null,
-  "bitRate": 519999,
+  "bitRate": 417517,
   "acodec": "aac",
   "format": "mov,mp4,m4a,3gp,3g2,mj2",
-  "size": 1931501
- }
+  "size": 1099256
+ },
+ "words": 30
 }

@@ -33,10 +33,10 @@ def summary(text: str) -> None:
 
 
 def build_folder(dest: pathlib.Path) -> None:
-    for item in ("server", "static", "scripts", "requirements.txt"):
+    for item in ("server", "static", "fonts", "scripts", "requirements.txt"):
         src = ROOT / item
         if src.is_dir():
-            shutil.copytree(src, dest / item, ignore=shutil.ignore_patterns("__pycache__", "demo"))
+            shutil.copytree(src, dest / item, ignore=shutil.ignore_patterns("__pycache__"))
         else:
             shutil.copy2(src, dest / item)
     shutil.copy2(ROOT / "deploy/huggingface/Dockerfile", dest / "Dockerfile")

@@ -41,7 +41,7 @@ GOOGLE = [
     ("ofl/manrope", "sans", [500, 700, 800], [], {}, None),
     ("ofl/outfit", "sans", [500, 700, 900], [], {}, None),
     ("ofl/sora", "sans", [600, 800], [], {}, None),
-    ("ofl/figtree", "sans", [500, 700, 900], [], {}, None),
+    ("ofl/figtree", "sans", [400, 500, 600, 700, 900], [], {}, None),
     ("ofl/urbanist", "sans", [700, 900], [], {}, None),
     ("ofl/lato", "sans", [700, 900], [], {}, None),
     # Display

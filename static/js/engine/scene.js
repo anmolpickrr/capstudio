@@ -4,7 +4,7 @@
 import { layoutCaption } from './layout.js';
 import { activeScale, groupMotion, wordMotion, wordTiming } from './motion.js';
 
-export const GRADIENT_BANDS = 16;
+export const GRADIENT_BANDS = 12;
 
 // Settings that can't be combined are resolved here, once, for both outputs.
 export function effectiveStyle(style) {

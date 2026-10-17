@@ -40,8 +40,9 @@ function wordSpec(caption, style, W, H) {
   const emph = emphasisSet(caption, style);
   // Shapes around single words need room so neighbours don't touch them.
   const boxed = style.bg === 'word' || style.highlight === 'pill' || style.emphBg;
-  const extraGap = !boxed ? 0 : (style.bg === 'word' ? 1.2 : 1.0) * style.bgPadX * r
-    + Math.max(0, (style.hlScale || 1) - 1) * fs * 0.6;
+  const extraGap = (!boxed ? 0 : (style.bg === 'word' ? 1.2 : 1.0) * style.bgPadX * r
+    + Math.max(0, (style.hlScale || 1) - 1) * fs * 0.6)
+    + style.outline * r; // thick outlines would otherwise fill the gap between words
   return caption.words.map((w, i) => {
     const text = displayWord(w.text, style) || w.text;
     const isEmph = emph.has(i);

@@ -1,151 +1,140 @@
-# Caption Panel
+# Caption Studio
 
-A fast, self-hosted panel for editors. You upload a finished video, generate word-synced captions, pick and tweak a template, preview it live, and download the captioned video in the original quality. Files are never stored permanently.
+An internal tool for the creative team. Upload a finished video and captions are generated automatically, synced word by word. Pick one of 42 caption styles, fine-tune typography, effects, motion and placement with a live preview, and export at the original quality. Videos are only processed temporarily and deleted automatically.
 
 ```
-Upload → Generate → Style & edit (live preview) → Export → auto-delete
+Upload → captions generated automatically → choose a style → customise → preview → export & download
 ```
 
-## Live website (Hugging Face)
+## What's inside
 
-The team website runs on a free Hugging Face Space and redeploys automatically on every push to `main` (`.github/workflows/deploy-huggingface.yml`).
+**Studio (your video)**
+- **Upload-first start.** Drop a video; captions start generating as soon as the upload finishes. You can pick the spoken language and add brand or people names beforehand.
+- **Editor** with five tool panels:
+  - **Styles:** the library of 42 styles, previewed live on a frame of your video.
+  - **Text:** font, weight, size, case, alignment, colour or gradient, spacing, and keyword emphasis.
+  - **Effects:** outline, shadow, glow, background shapes (per line, block or word), and spoken-word highlights (colour, pill, karaoke sweep, read-along).
+  - **Motion:** entrance, exit, word-by-word reveal and cascade, and speed.
+  - **Layout:** position presets, offsets, width, words and lines per caption, staggered lines, and tilt.
+- **Captions panel:** edit text and timestamps; split, merge or delete captions; star keywords; find & replace; move all captions earlier or later. Words the speech engine was unsure about are underlined.
+- **Timeline:** shows the audio waveform. Drag caption blocks to move them and their edges to trim; a shared edge moves both captions. Drag word markers to fix word timing. Zoom in and out.
+- **Preview:** play, frame-step, replay the current caption, speed control, drag the caption to position it, and safe-area guides (including the reels/shorts app-button zones).
+- **Undo / redo** for every edit (Ctrl+Z / Ctrl+Shift+Z).
+- **Export** has three options:
+  - **Burned-in video:** same resolution, frame rate, rotation, bit depth and audio. The encoder matches the source: H.264 → H.264, HEVC → HEVC (including 10-bit), ProRes → ProRes.
+  - **Subtitle track only:** the original picture is kept untouched.
+  - **Caption files:** SRT, WebVTT, styled ASS, or a plain transcript.
 
-- **Captions:** Groq's hosted Whisper large-v3 (free tier). If Groq is busy or unreachable, the on-server `large-v3-turbo` model takes over.
-- **Sign-in:** Google, limited to @pickrr.com and @shiprocket.com accounts.
+  Exports show progress, can be cancelled, and leave no partial files behind.
 
-One-time setup: add these GitHub secrets, then re-run the workflow. The run summary shows the site address.
-- `HF_TOKEN`
-- `GROQ_API_KEY`
-- `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`
+**Demo**
+- Three example videos: an English reel, a Hindi explainer and a UK-English square video.
+- Their captions were prepared for the demo and are labelled as such.
+- Switch styles instantly or compare four side by side.
+- "Customise this example" opens it in the Studio as a separate, clearly labelled example project.
 
-Check a running site at `/api/health`.
+**Languages**
+- Auto-detect.
+- English (India / US / UK, with matching spelling).
+- Hinglish, either in Devanagari with English in Latin, or all in Roman script.
+- Hindi, Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Urdu, Assamese, Nepali, Sanskrit, Sindhi, plus major international languages.
+- **Odia** appears in the list as *not supported yet*, because the Whisper model can't transcribe it.
+- Every word is drawn in a font that can render it: fonts fall back per word. The font picker only lists fonts that support the captions' language.
 
-## Online demo
+## How the preview matches the export
 
-https://anmolpickrr.github.io/capstudio/ opens the editor in demo mode, using a sample video with pre-made captions. Your team can try templates, styling, animations, the live preview, caption editing and SRT/VTT/ASS downloads there.
+Captions are laid out once in the browser by `static/js/engine/`:
+- **Measurement:** words are measured with the same font files the exporter uses.
+- **Layout:** line breaks, word positions and boxes are computed once.
+- **Animation:** keyframe curves are evaluated from the same definitions.
 
-GitHub Pages can only host fixed files, so the demo can't generate captions for your own videos or export a captioned video. Those need the server below.
+That one scene is drawn two ways: as SVG for the live preview, and as an ASS script that libass (inside ffmpeg) burns into the video.
 
-`scripts/build_demo.py` rebuilds the demo files (`static/demo/`). Adding `?demo` to any server URL opens the same demo locally.
+`tests/parity.mjs` checks this automatically. For every template and a dozen feature cases, it renders a frame each way and compares the pixels.
 
-## Run it
+## Fonts
 
-Requirements: Python 3.10+, ffmpeg 6+ (built with libass, libx264 and libx265, which standard distro builds include).
+- About 70 open-source font families (SIL OFL / Apache 2.0), in `fonts/`.
+- Covers modern sans, display, condensed, editorial serif, handwritten and mono styles, plus Noto/Baloo/Hind/Mukta and others for every Indian script.
+- Variable fonts are converted into one static file per weight, because libass only draws a variable font's default weight.
+- Rebuild with `python scripts/fetch_fonts.py --clean`.
+
+## Running it
+
+**Locally:**
 
 ```bash
-./run.sh                 # installs deps, downloads fonts, serves http://localhost:8000
+./run.sh            # http://localhost:8000
 ```
 
-With Docker:
+Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
+
+**Live site:** a free Hugging Face Space, deployed automatically from `main` by `.github/workflows/deploy-huggingface.yml`.
+- Captions come from Groq's hosted Whisper large-v3 (free tier). An on-server `large-v3-turbo` model takes over if Groq is busy.
+- Sign-in uses Google and is limited to @pickrr.com and @shiprocket.com accounts.
+- One-time setup: add these GitHub secrets, then run the workflow:
+  - `HF_TOKEN`
+  - `GROQ_API_KEY`
+  - `GOOGLE_CLIENT_ID`
+  - `GOOGLE_CLIENT_SECRET`
+- `/api/health` shows the engine and model status.
+
+**Docker on your own server:**
 
 ```bash
-# GPU server (needs the NVIDIA driver + NVIDIA Container Toolkit on the host)
-docker build -t caption-panel .
-docker run -d --restart unless-stopped --gpus all -p 127.0.0.1:8000:8000 caption-panel
-
-# CPU-only server (much slower transcription)
-docker build --build-arg GPU=0 -t caption-panel .
-docker run -d --restart unless-stopped -p 127.0.0.1:8000:8000 caption-panel
+docker build -t caption-studio .
+docker run --gpus all -p 8000:8000 caption-studio
 ```
 
-The image bakes the Whisper model in at build time (large-v3 is about 3 GB). Pass `--build-arg PRELOAD_MODEL=0` to skip that, and the model then downloads on first start.
+The build uses the GPU by default; add `--build-arg GPU=0` to build for CPU only.
 
-Check the server after starting it:
-
-```bash
-curl localhost:8000/api/health
-# {"status":"ok","jobs":0,"engine":"local","model":"large-v3","device":"cuda","modelLoaded":true}
-```
-
-On a GPU server, `device` must say `cuda`. If it says `cpu`, the container isn't seeing the GPU.
-
-Run a single server process (the default). Jobs are tracked in memory, so several workers or replicas would not see each other's jobs.
-
-### Configuration (environment variables)
+### Configuration
 
 | Variable | Default | Meaning |
 |---|---|---|
-| `TRANSCRIBE_ENGINE` | `groq` if `GROQ_API_KEY` is set, else `local` | `groq` = Groq's hosted Whisper large-v3 (audio is sent to Groq). `openai` = OpenAI whisper-1 (needs `OPENAI_API_KEY`). `local` = faster-whisper on this server (audio never leaves it). |
+| `TRANSCRIBE_ENGINE` | `groq` if `GROQ_API_KEY` is set, else `local` | `groq`, `openai`, or `local` (faster-whisper on this server; audio never leaves it). |
 | `LOCAL_FALLBACK` | `1` | With a hosted engine, use the on-server model when the service is busy or unreachable. |
-| `GOOGLE_CLIENT_ID` / `GOOGLE_CLIENT_SECRET` / `ALLOWED_EMAIL_DOMAINS` | — | Google sign-in. See `server/auth.py`. `AUTH_DISABLED=1` turns sign-in off for local development only. |
-| `WHISPER_MODEL` | `large-v3` | `large-v3` gives the best accuracy, including Indian languages. `large-v3-turbo` is about 3× faster with slightly lower accuracy and is a good choice for CPU-only servers. |
-| `JOB_TTL_MIN` | `120` | Delete a job this many minutes after its last activity, whatever its state. |
-| `DOWNLOAD_GRACE_MIN` | `15` | Delete a job this many minutes after its first download. This window allows a re-download. |
-| `MAX_UPLOAD_MB` | `4096` | Upload size limit. |
-| `DATA_DIR` | `$TMPDIR/caption-panel` | Scratch space for jobs. Old jobs in it are removed on every start. Use an empty, dedicated folder: the server refuses to start if the folder already holds files it didn't create. |
-| `TRANSCRIBE_CONCURRENCY` / `RENDER_CONCURRENCY` | `1` / `2` | Parallel jobs. |
+| `WHISPER_MODEL` | `large-v3` | On-server model (`large-v3-turbo` on the Space). |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS` | — | Google sign-in. |
+| `JOB_TTL_MIN` / `DOWNLOAD_GRACE_MIN` | `120` / `15` | Delete a job after this many minutes of inactivity, or this many minutes after its download. |
+| `MAX_UPLOAD_MB` | `4096` | Upload limit. |
+| `DATA_DIR` | `$TMPDIR/caption-panel` | Scratch space. It must be a dedicated, empty folder; the server refuses to start in a folder holding files it didn't create. |
+| `TRANSCRIBE_CONCURRENCY` / `RENDER_CONCURRENCY` | `3`/`1` with Groq, `1`/`2` otherwise | Jobs run in parallel; queue position is shown to editors. |
 
-## How each requirement is met
+Run a single server process: jobs are tracked in memory.
 
-**Accurate, synced captions.** Whisper large-v3 provides word-level timestamps. Voice-activity detection and `condition_on_previous_text=False` prevent hallucinated or looping text, and overlapping timings are repaired. Editors can add names and terms (brands, people), which are passed to the model as hotwords and prompt context. Words the model was unsure of are underlined in the caption editor for a quick check. Global sync nudges (±20 ms / ±100 ms) correct any constant offset.
+## Privacy and retention
 
-**Templates and customisation.** There are 12 templates: Clean Subtitle, Cinema, Boxed, Bold Pop, Karaoke Fill, One Word, Typewriter, Neon Glow, News Strap, Minimal, Comic and Desi Bold. Editors can change:
-- font and weight (51 bundled OFL fonts, including Noto for every Indian script)
-- size, text and highlight colour, case, letter spacing, punctuation hiding
-- outline, shadow, glow and background box
-- placement (top/middle/bottom, plus dragging the caption in the preview)
-- entrance animation (fade, pop, zoom, slide)
-- word effect (highlight the spoken word, karaoke fill, word-by-word reveal)
-- caption length (words per caption, characters per line, lines)
+Each job lives in one random-ID folder. It is deleted at the first of these:
+- 15 minutes after download;
+- 2 hours of inactivity;
+- the editor starting a new video or closing the tab;
+- a server restart.
 
-Any style can be saved as a personal preset. Presets are stored in the browser only.
-
-**Multilingual.** Supported languages:
-- English: India, US and UK. US and UK spelling is enforced, e.g. *color/colour*, *organize/organise*.
-- Hindi, plus Hinglish in two forms: Devanagari with English words in Latin, or all Roman script.
-- Bengali, Tamil, Telugu, Marathi, Gujarati, Kannada, Malayalam, Punjabi, Urdu, Assamese, Nepali, Sanskrit and Sindhi.
-- Major international languages.
-- Auto-detect, which reports the detected language and its confidence.
-
-If the chosen font can't draw a script (e.g. Anton with Tamil), the closest font that can is used automatically. The panel shows a notice when this happens.
-
-**Live preview = final output.** The preview and the export share one caption engine (`static/js/captions.js`) that handles chunking, line breaks, word timing and animation curves. The preview draws in SVG on the video's own pixel grid. The export is an ASS file that libass burns in on the same grid, with the same font files and libass's font metrics. Side-by-side frame comparisons during development matched in size, position, outline, boxes and highlights.
-
-**Original quality.** Resolution, aspect ratio, frame rate (including variable frame rate), rotation, colour metadata and bit depth are kept. Audio is stream-copied. The video is re-encoded only because burning in captions requires it, and the encoder matches the source:
-- H.264 → x264 at CRF 17 (CRF 14 in "Maximum")
-- HEVC → x265, keeping 10-bit if the source is 10-bit
-- ProRes → ProRes in the same profile
-
-**Subtitle track (no re-encode).** "Create subtitled video" adds a selectable subtitle track. The picture is bit-for-bit the original.
-
-SRT, WebVTT, styled ASS and plain transcript downloads are generated in the browser.
-
-**Fast.** The upload starts the moment a file is dropped, and the language can be chosen in parallel. Preview playback uses the local file, so nothing is downloaded back. Styling is instant and client-side. Transcription runs on GPU when available.
-
-**No permanent storage.** Each job lives in one random-ID folder and is deleted at the first of these:
-1. `DOWNLOAD_GRACE_MIN` after the download,
-2. `JOB_TTL_MIN` of inactivity,
-3. the editor clicking "Delete my files now" or closing the tab,
-4. a server restart.
-
-The extracted audio is deleted as soon as transcription finishes. Media and transcripts are never logged and have no database. A countdown in the top bar shows when the files will be removed.
-
-## Known limits / next steps
-- **Odia** is not supported by Whisper. Noto Sans Oriya fonts are bundled, but transcription needs an Indic ASR model such as AI4Bharat IndicConformer or Sarvam. `server/transcribe.py` has an engine switch for this.
-- **Hinglish (all Roman)** asks Whisper for Roman output and transliterates any remaining Devanagari into casual spelling (e.g. *yah bahut aasaan hai*). Uncommon words may need a manual touch-up.
-- Ideas from comparable tools, not yet built:
-  - a pill-shaped background behind the active word
-  - auto emoji and keyword emphasis
-  - translating captions to a second language
-  - speaker labels
-  - a profanity filter
+Other rules:
+- Extracted audio is deleted right after transcription.
+- Failed or cancelled exports are removed immediately.
+- File names never appear in server logs.
+- There is no database and no permanent storage.
+- Keys stay on the server; the browser never sees them.
+- With Groq, audio is sent to Groq for transcription.
 
 ## Tests
 
 See `tests/README.md`:
-- Python unit tests (`pytest tests`)
-- An end-to-end browser test that renders five kinds of source video and checks the output keeps the original's specs
+- **Python tests:** API, sign-in, engines, retention, deploy script.
+- **Browser end-to-end test:** five source formats, undo, Demo.
+- **Preview-vs-export pixel comparison:** every template.
 
 ## Layout
+
 ```
-server/main.py        API, jobs, retention sweeper, /api/health
-server/transcribe.py  faster-whisper / OpenAI engines, Hinglish romanisation
-server/media.py       ffprobe, quality-preserving encode plans, burn-in, soft subs
-server/spelling.py    US ↔ UK spelling
-server/fonts.py       font catalogue + metrics shared with the browser
-static/js/captions.js caption engine (chunking, timing, animation, ASS/SRT/VTT)
-static/js/preview.js  SVG live preview
-static/js/templates.js templates
-static/js/app.js      UI
-tests/                unit + end-to-end tests
+server/            FastAPI app: jobs, retention, transcription engines, sign-in, ffmpeg
+static/js/engine/  caption engine: fonts, measurement, layout, motion, scene, SVG preview, ASS export
+static/js/templates/  default settings and the 42-style library
+static/js/app/     the interface: studio, stage, timeline, panels, export, demo
+static/demo/       example videos with prepared captions (scripts/build_demo.py)
+fonts/             caption fonts (scripts/fetch_fonts.py)
+deploy/huggingface/  Space image and deploy script
+tests/             unit, end-to-end and parity tests
 ```

@@ -3,18 +3,18 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · Caption Panel</title>
+  <title>Sign in · Caption Studio</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
-  <link rel="stylesheet" href="/css/app.css">
+  <link rel="stylesheet" href="/css/studio.css">
   <style>
-    body { display: grid; place-items: center; min-height: 100vh; padding: 24px;
+    body { display: grid; place-items: center; min-height: 100vh; padding: 24px; overflow: auto;
       background: radial-gradient(1200px 600px at 15% 10%, rgba(108, 92, 255, .22), transparent 60%),
-                  radial-gradient(900px 500px at 90% 90%, rgba(248, 120, 200, .12), transparent 60%), var(--bg); }
-    .login { width: min(440px, 100%); background: var(--panel); border: 1px solid var(--line); border-radius: 18px;
+                  radial-gradient(900px 500px at 90% 90%, rgba(248, 120, 200, .12), transparent 60%), var(--bg-0); }
+    .login { width: min(440px, 100%); background: var(--bg-1); border: 1px solid var(--line); border-radius: 18px;
       padding: 32px 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
     .login .brand { font-size: 18px; margin-bottom: 22px; }
     .login h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.01em; }
-    .login p { color: var(--muted); margin: 0 0 22px; }
+    .login p { color: var(--text-2); margin: 0 0 22px; }
     .sample { position: relative; height: 120px; border-radius: 12px; margin-bottom: 24px; overflow: hidden;
       background: linear-gradient(135deg, #1d2b64, #6c5cff 60%, #f8cdda); display: grid; place-items: end center; padding-bottom: 18px; }
     .sample span { font: 800 22px/1 Poppins, Inter, sans-serif; color: #fff; text-transform: uppercase;
@@ -25,7 +25,7 @@
       font-size: 15px; cursor: pointer; text-decoration: none; transition: transform .05s, box-shadow .15s; }
     .google:hover { box-shadow: 0 0 0 4px rgba(108, 92, 255, .35); }
     .google:active { transform: translateY(1px); }
-    .note { font-size: 12.5px; color: var(--muted); margin-top: 16px; text-align: center; }
+    .note { font-size: 12.5px; color: var(--text-2); margin-top: 16px; text-align: center; }
     .alert { border-radius: 10px; padding: 10px 12px; font-size: 13px; margin-bottom: 18px;
       background: rgba(248, 113, 113, .1); border: 1px solid rgba(248, 113, 113, .35); color: #fca5a5; }
     .alert.info { background: rgba(108, 92, 255, .12); border-color: rgba(108, 92, 255, .4); color: #c7c0ff; }
@@ -34,13 +34,13 @@
 </head>
 <body>
   <main class="login">
-    <div class="brand"><span class="logo">CC</span> Caption Panel</div>
+    <div class="brand"><span class="brand-mark"><svg viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2.2" stroke-linecap="round" style="width:16px;height:16px"><path d="M4 7h16M4 12h10M4 17h7"/><path d="m15 15 5 3-5 3z" fill="#fff"/></svg></span> Caption Studio</div>
     <div class="sample"><span>Make every <b>video</b> count</span></div>
     <h1>Sign in to continue</h1>
     <p>Upload a finished video, get accurate synced captions, style them and download — in minutes.</p>
     <div class="alert info" id="frame-note" hidden>
       Sign-in can't run inside this embedded view.
-      <a id="open-full" target="_blank" rel="noopener">Open Caption Panel in a new tab →</a>
+      <a id="open-full" target="_blank" rel="noopener">Open Caption Studio in a new tab →</a>
     </div>
     <div class="alert" id="error" hidden></div>
     <a class="google" id="google" href="/auth/login">
