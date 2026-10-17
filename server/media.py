@@ -1,0 +1,170 @@
+"""ffprobe / ffmpeg helpers: probing, audio extraction, burn-in and soft-sub muxing."""
+from __future__ import annotations
+
+import json
+import re
+import subprocess
+from typing import Callable
+
+from .fonts import FONTS_DIR
+
+
+class MediaError(RuntimeError):
+    pass
+
+
+def probe(path: str) -> dict:
+    r = subprocess.run(["ffprobe", "-v", "error", "-print_format", "json", "-show_format",
+                        "-show_streams", path], capture_output=True, text=True)
+    if r.returncode != 0:
+        raise MediaError("This file could not be read as a video.")
+    data = json.loads(r.stdout)
+    video = next((s for s in data["streams"] if s["codec_type"] == "video"
+                  and not s.get("disposition", {}).get("attached_pic")), None)
+    if not video:
+        raise MediaError("No video stream found in this file.")
+    audio = next((s for s in data["streams"] if s["codec_type"] == "audio"), None)
+
+    rotation = 0
+    for sd in video.get("side_data_list", []):
+        if "rotation" in sd:
+            rotation = int(sd["rotation"])
+    if not rotation and "rotate" in video.get("tags", {}):
+        rotation = -int(video["tags"]["rotate"])
+    w, h = int(video["width"]), int(video["height"])
+    if abs(rotation) % 180 == 90:
+        w, h = h, w  # ffmpeg auto-rotates before filtering; captions use display dims
+
+    def rate(s):
+        try:
+            n, d = s.split("/")
+            return round(int(n) / int(d), 3) if int(d) else None
+        except (ValueError, AttributeError):
+            return None
+
+    duration = float(data["format"].get("duration") or video.get("duration") or 0)
+    return {
+        "width": w,
+        "height": h,
+        "rotation": rotation,
+        "fps": rate(video.get("avg_frame_rate")) or rate(video.get("r_frame_rate")),
+        "duration": duration,
+        "vcodec": video.get("codec_name"),
+        "profile": video.get("profile"),
+        "pixFmt": video.get("pix_fmt"),
+        "colorSpace": video.get("color_space"),
+        "colorPrimaries": video.get("color_primaries"),
+        "colorTransfer": video.get("color_transfer"),
+        "colorRange": video.get("color_range"),
+        "bitRate": int(video.get("bit_rate") or data["format"].get("bit_rate") or 0),
+        "acodec": audio.get("codec_name") if audio else None,
+        "format": data["format"].get("format_name"),
+        "size": int(data["format"].get("size") or 0),
+    }
+
+
+def extract_audio(src: str, dest: str, mp3: bool = False) -> None:
+    args = ["-vn", "-ac", "1", "-ar", "16000"]
+    args += ["-c:a", "libmp3lame", "-b:a", "48k"] if mp3 else ["-c:a", "pcm_s16le"]
+    _run(["ffmpeg", "-y", "-v", "error", "-i", src, *args, dest])
+
+
+def make_proxy(src: str, dest: str) -> None:
+    """Low-res H.264 copy for browsers that can't play the original (ProRes, HEVC on some
+    browsers). Only used for the preview; the export always uses the original."""
+    _run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vf", "scale=-2:'min(720,ih)'",
+          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-c:a", "aac", "-b:a", "96k",
+          "-movflags", "+faststart", dest])
+
+
+QUALITY = {
+    #           x264 crf, x264 preset, x265 crf, x265 preset
+    "max":      (14, "slow", 16, "medium"),
+    "high":     (17, "medium", 19, "fast"),
+    "fast":     (20, "veryfast", 22, "veryfast"),
+}
+X264_PIX = {"yuv420p", "yuvj420p", "yuv422p", "yuv444p", "yuv420p10le", "yuv422p10le",
+            "yuv444p10le"}
+X265_PIX = X264_PIX | {"yuv420p12le", "yuv422p12le", "yuv444p12le"}
+MP4_AUDIO = {"aac", "mp3", "ac3", "eac3", "alac", "opus", "flac"}
+PRORES_PROFILES = {"Proxy": "0", "LT": "1", "Standard": "2", "HQ": "3", "4444": "4",
+                   "4444 XQ": "5", "XQ": "5"}
+
+
+def output_plan(info: dict, src_ext: str, quality: str) -> tuple[list[str], str]:
+    """Encoder args + output extension that best preserve the original's quality."""
+    crf264, preset264, crf265, preset265 = QUALITY.get(quality, QUALITY["high"])
+    vcodec, pix = info["vcodec"], info["pixFmt"]
+    if vcodec == "prores":
+        profile = PRORES_PROFILES.get(info.get("profile") or "", "3")
+        pix_out = pix if pix in ("yuv422p10le", "yuv444p10le", "yuva444p10le") else "yuv422p10le"
+        return (["-c:v", "prores_ks", "-profile:v", profile, "-vendor", "apl0",
+                 "-pix_fmt", pix_out], ".mov")
+    ext = ".mov" if src_ext.lower() == ".mov" else ".mp4"
+    if vcodec == "hevc":
+        args = ["-c:v", "libx265", "-crf", str(crf265), "-preset", preset265,
+                "-tag:v", "hvc1", "-x265-params", "log-level=error"]
+        args += ["-pix_fmt", pix if pix in X265_PIX else "yuv420p"]
+    else:
+        args = ["-c:v", "libx264", "-crf", str(crf264), "-preset", preset264]
+        args += ["-pix_fmt", pix if pix in X264_PIX else "yuv420p"]
+    for flag, key in (("-colorspace", "colorSpace"), ("-color_primaries", "colorPrimaries"),
+                      ("-color_trc", "colorTransfer"), ("-color_range", "colorRange")):
+        if info.get(key) and info[key] != "unknown":
+            args += [flag, info[key]]
+    return args, ext
+
+
+def _audio_args(info: dict, ext: str) -> list[str]:
+    if not info["acodec"]:
+        return []
+    if ext == ".mov" or info["acodec"] in MP4_AUDIO:
+        return ["-c:a", "copy"]
+    return ["-c:a", "aac", "-b:a", "320k"]
+
+
+def _escape_filter_path(p: str) -> str:
+    return p.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
+
+
+def burn(src: str, ass_name: str, dest: str, info: dict, venc: list[str], cwd: str,
+         progress: Callable[[float], None]) -> None:
+    ext = "." + dest.rsplit(".", 1)[1]
+    vf = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
+    cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
+           "-i", src, "-map", "0:v:0", "-map", "0:a?", "-vf", vf, *venc,
+           "-fps_mode", "passthrough", *_audio_args(info, ext),
+           "-map_metadata", "0", "-movflags", "+faststart", dest]
+    _run_with_progress(cmd, info["duration"], progress, cwd)
+
+
+def mux_soft(src: str, srt: str, dest: str, info: dict, lang3: str) -> None:
+    ext = "." + dest.rsplit(".", 1)[1]
+    scodec = "srt" if ext == ".mkv" else "mov_text"
+    _run(["ffmpeg", "-y", "-v", "error", "-i", src, "-i", srt, "-map", "0:v:0", "-map", "0:a?",
+          "-map", "1:0", "-c:v", "copy", *_audio_args(info, ext), "-c:s", scodec,
+          "-metadata:s:s:0", f"language={lang3}", "-disposition:s:0", "default",
+          "-map_metadata", "0", *(["-movflags", "+faststart"] if ext != ".mkv" else []), dest])
+
+
+def _run(cmd: list[str]) -> None:
+    r = subprocess.run(cmd, capture_output=True, text=True)
+    if r.returncode != 0:
+        raise MediaError(_last_error(r.stderr))
+
+
+def _run_with_progress(cmd, duration, progress, cwd) -> None:
+    proc = subprocess.Popen(cmd, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                            cwd=cwd)
+    for line in proc.stdout:
+        m = re.match(r"out_time_us=(\d+)", line)
+        if m and duration:
+            progress(min(int(m.group(1)) / 1e6 / duration, 0.995))
+    err = proc.stderr.read()
+    if proc.wait() != 0:
+        raise MediaError(_last_error(err))
+
+
+def _last_error(stderr: str) -> str:
+    lines = [ln for ln in stderr.strip().splitlines() if ln.strip()]
+    return "ffmpeg failed: " + (lines[-1][:300] if lines else "unknown error")
