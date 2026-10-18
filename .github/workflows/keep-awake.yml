@@ -1,6 +1,7 @@
 name: Keep the site awake
 
-# Render's free plan puts the site to sleep after 15 minutes without visitors,
+# Backup only: the server now pings itself (keep_awake in server/main.py), because
+# GitHub often skips scheduled runs. Render's free plan puts the site to sleep after 15 minutes without visitors,
 # and the next visitor waits about a minute. A request every 10 minutes keeps it
 # awake (one service running all month uses ~720 of the 750 free hours).
 on:

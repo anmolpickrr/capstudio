@@ -48,3 +48,23 @@ def test_full_power_plan_unchanged():
     assert args[args.index("-pix_fmt") + 1] == "yuv420p10le"
     assert "-x264-params" not in r["h264"][0]
     assert r["uhd"] is False
+
+
+def test_keep_awake_pings_its_own_address(monkeypatch):
+    from server import main
+    calls = []
+
+    class Stop(Exception):
+        pass
+
+    def fake_sleep(_):
+        if calls:
+            raise Stop
+    monkeypatch.setattr(main.time, "sleep", fake_sleep)
+    monkeypatch.setattr(main.urllib.request, "urlopen",
+                        lambda url, timeout: calls.append(url) or type("R", (), {"read": lambda self: b""})())
+    try:
+        main.keep_awake("https://example.onrender.com/")
+    except Stop:
+        pass
+    assert calls == ["https://example.onrender.com/api/health"]

@@ -34,6 +34,8 @@ function route() {
   view.className = 'studio';
   renderStudio(view);
   set({ route: 'studio' }, 'route');
+  // the github.io address shows this page in a frame, behind its own loading screen
+  if (window.parent !== window) window.parent.postMessage('capstudio-ready', '*');
 }
 
 window.addEventListener('pagehide', () => { if (state.project?.kind) leaveProject({ beacon: true }); });

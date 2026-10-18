@@ -81,7 +81,7 @@ Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
   - ffmpeg runs single-threaded with a short look-ahead (a 1080p export peaks around 300 MB);
   - HEVC sources are exported as 8-bit H.264 at the same resolution and frame rate;
   - burned-in exports are limited to 1080p (subtitle tracks and caption files work at any size).
-- Exports made in the browser don't use the server at all. When the server has to export (other browsers, ProRes), a 30-second reel takes a few minutes. The site sleeps after 15 idle minutes, and the next visit takes about a minute to wake it.
+- Exports made in the browser don't use the server at all. When the server has to export (other browsers, ProRes), a 30-second reel takes a few minutes. Render's free plan puts a site to sleep after 15 idle minutes, so the server requests its own address every 9 minutes and stays awake (`KEEP_AWAKE=0` turns this off; one service running all month uses about 744 of the 750 free hours). The github.io address shows a loading screen with the logo while the app loads behind it.
 - `/api/health` shows the engine status.
 - The page loads its scripts and styles from `/v/<fingerprint>/` (a hash of the app's files, worked out when the server starts), cached for good at that address. Each release changes the fingerprint, so browsers always get the new files together and can't mix an old cached script with a new page.
 

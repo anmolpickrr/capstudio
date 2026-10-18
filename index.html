@@ -2,8 +2,8 @@
 <!-- GitHub Pages entry (anmolpickrr.github.io/capstudio). Pages only hosts files and
      can't run the app's server, so this page shows the live site on Render inside a
      full-window frame; the address bar keeps the github.io address. While the server
-     wakes up (Render's free plan sleeps when idle) it shows its own loading screen
-     instead of Render's, and opens the app once /api/health answers. -->
+     loads (or wakes up: Render's free plan can sleep when idle) it shows its own
+     loading screen instead of Render's, until the app says it's ready. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -36,7 +36,7 @@
     <div class="box">
       <img src="static/logo.svg" alt="Capstudio by Fastrr">
       <div class="bar" aria-hidden="true"><i></i></div>
-      <p class="msg" id="msg" role="status">Opening Capstudio…</p>
+      <p class="msg" id="msg" role="status" aria-label="Loading"></p>
     </div>
   </div>
   <script>
@@ -44,30 +44,43 @@
     const loading = document.getElementById('loading');
     const msg = document.getElementById('msg');
     const started = Date.now();
-    let opened = false;
+    let awake = false, wasAsleep = false, shown = false, staleFrame = false;
 
-    function open() {
-      if (opened) return;
-      opened = true;
-      const frame = document.createElement('iframe');
-      frame.title = 'Capstudio';
-      frame.allow = 'fullscreen; clipboard-write; autoplay';
-      frame.src = SITE + '/';
-      frame.onload = () => { frame.classList.add('ready'); loading.classList.add('done'); };
-      document.body.append(frame);
+    function show() {
+      if (shown) return;
+      shown = true;
+      frame.classList.add('ready');
+      loading.classList.add('done');
     }
 
-    // The server answers /api/health only once it's awake; while asleep, Render's
-    // own page answers instead, which this page can't read, so we keep asking.
+    // Start loading the app straight away, behind the logo. It says when it's drawn.
+    const frame = document.createElement('iframe');
+    frame.title = 'Capstudio';
+    frame.allow = 'fullscreen; clipboard-write; autoplay';
+    frame.src = SITE + '/';
+    frame.onload = () => {
+      if (!awake) staleFrame = true; // Render's "waking up" page, not the app
+      else setTimeout(show, 6000);   // in case the app never says it's ready
+    };
+    document.body.append(frame);
+    window.addEventListener('message', (e) => {
+      if (e.origin === SITE && e.data === 'capstudio-ready') show();
+    });
+
+    // If the server was asleep, the frame got Render's waiting page: once the server
+    // answers, load the app again.
     async function check() {
       try {
         const r = await fetch(SITE + '/api/health', { cache: 'no-store' });
-        if (r.ok && (await r.json()).status === 'ok') return open();
+        if (r.ok && (await r.json()).status === 'ok') {
+          awake = true;
+          if (staleFrame && wasAsleep && !shown) frame.src = SITE + '/';
+          return;
+        }
       } catch (e) { /* still waking */ }
-      const waited = (Date.now() - started) / 1000;
-      if (waited > 4) msg.innerHTML = 'Starting Capstudio…<small>It was resting, so this takes up to a minute.</small>';
-      if (waited > 120) msg.innerHTML = 'This is taking longer than usual.<small><a href="' + SITE + '/">Open Capstudio directly</a></small>';
-      setTimeout(check, 2500);
+      wasAsleep = true;
+      if (Date.now() - started > 90000) msg.innerHTML = '<a href="' + SITE + '/">Open Capstudio directly</a>';
+      setTimeout(check, 1500);
     }
     check();
   </script>

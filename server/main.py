@@ -23,6 +23,7 @@ import tempfile
 import threading
 import time
 import urllib.parse
+import urllib.request
 import uuid
 import zlib
 from concurrent.futures import ThreadPoolExecutor
@@ -186,12 +187,27 @@ def prepare_data_dir() -> None:
             shutil.rmtree(e, ignore_errors=True)
 
 
+def keep_awake(url: str, every: float = 9 * 60) -> None:
+    """Render's free plan puts a site to sleep after 15 minutes without requests, and
+    the next visitor waits about a minute. The site asks for its own public address
+    every 9 minutes, which counts as a visit, so it never falls asleep. (One service
+    running all month uses about 744 of the 750 free hours.)"""
+    while True:
+        time.sleep(every)
+        try:
+            urllib.request.urlopen(url.rstrip("/") + "/api/health", timeout=30).read()
+        except Exception as e:  # noqa: BLE001 - a missed ping is retried next round
+            log.warning("keep-awake ping failed: %s", e)
+
+
 @asynccontextmanager
 async def lifespan(_app: FastAPI):
     prepare_data_dir()
     threading.Thread(target=sweeper, daemon=True).start()
     threading.Thread(target=catalogue, daemon=True).start()  # first page load needs it
     transcribe.warm_up()
+    if os.environ.get("RENDER_EXTERNAL_URL") and os.environ.get("KEEP_AWAKE", "1") == "1":
+        threading.Thread(target=keep_awake, args=(os.environ["RENDER_EXTERNAL_URL"],), daemon=True).start()
     yield
 
 
