@@ -10,7 +10,7 @@ import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
 import { Timeline } from './timeline.js';
 import { deleteCaption, scaleCaption } from './captionops.js';
-import { showcase, stopShowcase } from './showcase.js';
+import { heroPhone, showcase, stopShowcase } from './showcase.js';
 import { templateById } from '../templates/library.js';
 import { $, h, toast } from './ui.js';
 
@@ -52,6 +52,12 @@ async function onChange(what) {
 
 // ---------------------------------------------------------------- welcome
 
+// Language names in their own scripts, for the strip under the hero.
+const SCRIPTS = [
+  ['हिन्दी', 'deva'], ['English', 'latin'], ['தமிழ்', 'taml'], ['తెలుగు', 'telu'], ['বাংলা', 'beng'], ['मराठी', 'deva'],
+  ['ગુજરાતી', 'gujr'], ['ಕನ್ನಡ', 'knda'], ['മലയാളം', 'mlym'], ['ਪੰਜਾਬੀ', 'guru'], ['Hinglish', 'latin'], ['اردو', 'arab'],
+];
+
 function welcome() {
   const langs = state.config.languages;
   const groups = {};
@@ -61,45 +67,78 @@ function welcome() {
       ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
   langSel.value = state.language;
   langSel.addEventListener('change', () => set({ language: langSel.value }));
-  const vocab = h('input', { class: 'input', id: 'pre-vocab', placeholder: 'For example, Shiprocket', value: state.vocabulary });
+  const vocab = h('input', { class: 'input', id: 'pre-vocab', placeholder: 'Names to spell right, e.g. Shiprocket', value: state.vocabulary,
+    'aria-label': 'Names to spell right' });
   vocab.addEventListener('input', () => set({ vocabulary: vocab.value }));
 
   const maxGB = Math.round(state.config.maxUploadMB / 1024 * 10) / 10;
+  const limit = maxGB >= 1 ? `${maxGB} GB` : `${state.config.maxUploadMB} MB`;
   const file = h('input', { type: 'file', accept: 'video/*,.mov,.mkv,.mxf', hidden: true, id: 'file-input' });
   file.addEventListener('change', () => file.files[0] && startUpload(file.files[0]));
-  const startWith = h('p', { class: 'start-with' });
+  const startWith = h('span', { class: 'start-with' });
   const showStart = () => {
     const tpl = state.templateId && templateById(state.templateId);
     startWith.textContent = tpl ? `Starting style: ${tpl.name}` : '';
   };
   showStart();
-  const drop = h('div', { class: 'drop', role: 'button', tabindex: 0, 'aria-label': 'Upload a video',
-    onclick: (e) => { if (!e.target.closest('select,input,label')) file.click(); },
-    onkeydown: (e) => { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); file.click(); } } },
-  h('h2', {}, 'Upload a video'),
-  h('p', {}, `Drag it here or choose a file. MP4, MOV, MKV or WebM, up to ${maxGB >= 1 ? `${maxGB} GB` : `${state.config.maxUploadMB} MB`}.`),
-  h('button', { class: 'btn brand lg', type: 'button' }, 'Choose a video'),
-  startWith,
-  h('div', { class: 'pre-options', onclick: (e) => e.stopPropagation() },
-    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Language in the video'), langSel),
-    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Names to spell right'), vocab)),
-  file);
-  for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
-  for (const ev of ['dragleave', 'drop']) drop.addEventListener(ev, () => drop.classList.remove('over'));
-  drop.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) startUpload(f); });
 
-  return h('div', { class: 'welcome' }, h('div', { class: 'welcome-inner' },
-    h('section', { class: 'hero' },
-      h('div', { class: 'hero-copy' },
-        h('h1', {}, 'Captions for your videos, ready in minutes'),
-        h('p', { class: 'lede' }, 'Upload a video and the captions are written for you, timed to every word. Pick a style, change anything you like, and download the video at the same quality you uploaded.'),
-        h('p', { class: 'langs' }, 'Works with Hindi, Hinglish and English, plus Tamil, Telugu, Bengali, Marathi and other Indian languages.')),
-      drop),
-    h('section', { class: 'looks' },
-      h('div', { class: 'looks-head' },
-        h('h2', {}, 'Pick a style to start with'),
-        h('p', {}, 'It’s applied as soon as your captions are ready. The editor has 42 styles, and you can change every detail.')),
-      showcase(showStart))));
+  const upload = h('div', { class: 'upload' },
+    h('div', { class: 'upload-main' },
+      h('button', { class: 'btn brand lg', type: 'button', onclick: () => file.click() }, 'Choose a video'),
+      h('div', { class: 'upload-hint' }, h('b', {}, 'or drop it anywhere on this page'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))),
+    h('div', { class: 'upload-options' }, langSel, vocab),
+    startWith, file);
+
+  const floats = h('div', { class: 'floats', 'aria-hidden': 'true' },
+    h('div', { class: 'float f-pop' }, 'WAIT FOR IT'),
+    h('div', { class: 'float f-card f-lang' },
+      h('small', {}, 'Language'), h('b', {}, h('i', { class: 'dot' }), 'Hindi, detected')),
+    h('div', { class: 'float f-card f-timing' },
+      h('small', {}, 'Every word timed'),
+      h('div', { class: 'f-words' }, [['आज', '0:01.2'], ['हम', '0:01.6'], ['सीखेंगे', '0:01.9']].map(([w, t]) => h('span', {}, h('b', {}, w), h('em', {}, t)))),
+      h('div', { class: 'f-wave' }, Array.from({ length: 28 }, (_, i) => h('i', { style: { height: `${20 + Math.round(Math.abs(Math.sin(i * 1.7) * 70))}%` } })))),
+    h('div', { class: 'float f-card f-type' },
+      h('small', {}, '42 styles'),
+      h('div', { class: 'f-specimens' }, h('span', { class: 's1' }, 'Aa'), h('span', { class: 's2' }, 'Aa'), h('span', { class: 's3' }, 'Aa'), h('span', { class: 's4' }, 'अ'))),
+    h('div', { class: 'float f-card f-safe' },
+      h('small', {}, 'Instagram Reels'), h('b', {}, h('i', { class: 'tick' }, '✓'), 'Inside the safe zone')),
+    h('div', { class: 'float f-hing' }, 'kya baat hai!'),
+    h('div', { class: 'float f-card f-export' },
+      h('small', {}, 'Export'), h('b', {}, '1080 × 1920 · 30 fps'), h('span', {}, 'Same quality as your upload')));
+
+  const ticker = h('div', { class: 'ticker', 'aria-label': 'Languages' },
+    h('div', { class: 'ticker-track' }, [...SCRIPTS, ...SCRIPTS].map(([t, sc], i) => h('span', { class: `sc-${sc}`, 'aria-hidden': i >= SCRIPTS.length ? 'true' : null }, t))));
+
+  const page = h('div', { class: 'welcome' },
+    h('div', { class: 'welcome-inner' },
+      h('section', { class: 'hero' },
+        h('div', { class: 'hero-copy' },
+          h('span', { class: 'eyebrow' }, 'Captions for reels, ads and explainers'),
+          h('h1', { class: 'hero-title' },
+            h('span', {}, 'Captions that ', h('span', { class: 't-pop' }, 'POP'), ','),
+            h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
+          h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
+          upload),
+        h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
+      ticker,
+      h('section', { class: 'looks' },
+        h('div', { class: 'looks-head' },
+          h('h2', {}, 'Pick a style to start with'),
+          h('p', {}, 'It’s applied as soon as your captions are ready. The editor has 42 styles, and you can change every detail.')),
+        showcase(showStart))),
+    h('div', { class: 'drop-veil' }, h('div', {}, h('b', {}, 'Drop your video to start'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))));
+
+  // the whole page accepts a dropped video
+  let depth = 0;
+  page.addEventListener('dragenter', (e) => { e.preventDefault(); depth++; page.classList.add('dragging'); });
+  page.addEventListener('dragover', (e) => e.preventDefault());
+  page.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; page.classList.remove('dragging'); } });
+  page.addEventListener('drop', (e) => {
+    e.preventDefault(); depth = 0; page.classList.remove('dragging');
+    const f = e.dataTransfer.files[0];
+    if (f) startUpload(f);
+  });
+  return page;
 }
 
 // ---------------------------------------------------------------- live preview

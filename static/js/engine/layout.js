@@ -43,7 +43,7 @@ function wordSpec(caption, style, W, H) {
   const extraGap = (!boxed ? 0 : (style.bg === 'word' ? 1.2 : 1.0) * style.bgPadX * r
     + Math.max(0, (style.hlScale || 1) - 1) * fs * 0.6)
     + style.outline * r; // thick outlines would otherwise fill the gap between words
-  return caption.words.map((w, i) => {
+  const specs = caption.words.map((w, i) => {
     const text = displayWord(w.text, style) || w.text;
     const isEmph = emph.has(i);
     const font = wordFont(isEmph && style.emphFont ? style.emphFont : style.font, text);
@@ -56,6 +56,11 @@ function wordSpec(caption, style, W, H) {
       desc: size * (1 - font.ascent),
     };
   });
+  // When the spoken word grows, it grows into its neighbours: leave room for the
+  // larger of each pair (shapes around words already get room above).
+  const grow = style.highlight !== 'none' && !boxed ? Math.max(0, (style.hlScale || 1) - 1) / 2 : 0;
+  if (grow) specs.forEach((sp, i) => { if (specs[i + 1]) sp.space += grow * Math.max(sp.w, specs[i + 1].w); });
+  return specs;
 }
 
 // Balanced line breaks: fewest lines that fit maxWidth, then even line lengths.

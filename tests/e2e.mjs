@@ -74,7 +74,9 @@ for (const [file, tpl, ext] of CASES) {
     await page.waitForSelector('.look', { timeout: 15000 });
     const looks = await page.locator('.look').count();
     if (looks < 6) throw new Error(`expected 6 styles in the showcase, found ${looks}`);
-    await page.waitForFunction(() => [...document.querySelectorAll('.look-captions')].some((s) => s.querySelector('text')),
+    await page.waitForFunction(() => document.querySelector('.phone .live-captions text'), null, { timeout: 15000 });
+    await page.locator('.looks').scrollIntoViewIfNeeded();
+    await page.waitForFunction(() => [...document.querySelectorAll('.look .live-captions')].some((s) => s.querySelector('text')),
       null, { timeout: 15000 });
     await page.click('.look[data-template="karaoke"]');
     await page.setInputFiles('#file-input', MEDIA + 'land.webm');
@@ -82,7 +84,7 @@ for (const [file, tpl, ext] of CASES) {
     const store = () => page.evaluate(async () => { const { state } = await import('/js/app/store.js'); return { id: state.templateId, font: state.style.font }; });
     const s0 = await store();
     if (s0.id !== 'karaoke') throw new Error(`the picked style wasn't used (got ${s0.id})`);
-    console.log('✓ showcase: 6 styles play with captions, and the picked style is used for the upload');
+    console.log('✓ first page: the hero phone and 6 styles play with captions, and the picked style is used for the upload');
     await page.click('.tpl[data-id="aurora"]');
     const s1 = await store();
     await page.keyboard.press('Control+z');

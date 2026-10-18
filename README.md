@@ -31,9 +31,9 @@ Upload → captions generated automatically → choose a style → customise →
   Exports keep the original file name (only the extension changes if the format does, e.g. WebM to MP4). They show progress, can be cancelled, and leave no partial files behind.
 
 **First page**
-- Six short looping clips, each playing a different style live (English, Hindi and Hinglish), drawn by the same engine as the editor.
-- Clicking one makes it the starting style for the next upload.
-- The clips are built by `scripts/build_showcase.py` into `static/showcase/`.
+- A headline set in caption typefaces, a phone playing a reel whose live captions change style on every loop, and small floating cards for real features (language detection, word timing, the style library, safe zones, original-quality export).
+- A strip of language names, each in its own script; a compact upload bar; a video can be dropped anywhere on the page.
+- Six short looping clips below, each drawing a different style live; clicking one makes it the starting style for the upload. Clips are built by `scripts/build_showcase.py` into `static/showcase/`.
 
 **Languages**
 - Auto-detect.
