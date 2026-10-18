@@ -18,7 +18,8 @@ export class Timeline {
     this.ruler = h('div', { class: 'tl-ruler' });
     this.wave = h('canvas', { class: 'tl-wave' });
     this.track = h('div', { class: 'tl-track' });
-    this.head = h('div', { class: 'tl-head-line' });
+    // the playhead: a line with a handle you can grab and drag
+    this.head = h('div', { class: 'tl-head-line', title: 'Drag to move through the video' }, h('span', { class: 'tl-head-grip' }));
     this.content.append(this.ruler, this.wave, this.track, this.head);
     this.scroll.append(this.content);
     this.info = h('span', { class: 'hint' });
@@ -33,8 +34,12 @@ export class Timeline {
       this.scroll);
     this.ro = new ResizeObserver(() => this.layout());
     this.ro.observe(this.scroll);
-    this.ruler.addEventListener('pointerdown', (e) => this.seekFromEvent(e));
-    this.track.addEventListener('pointerdown', (e) => { if (e.target === this.track) this.seekFromEvent(e); });
+    // Press anywhere on the ruler, waveform, empty track or the playhead and drag to scrub.
+    this.content.addEventListener('pointerdown', (e) => {
+      if (e.button !== 0) return;
+      const t = e.target;
+      if (t === this.content || t === this.track || t === this.head || this.ruler.contains(t) || this.head.contains(t)) this.scrub(e);
+    });
     this.scroll.addEventListener('wheel', (e) => {
       if (!e.ctrlKey && !e.metaKey) return;
       e.preventDefault();
@@ -57,7 +62,42 @@ export class Timeline {
 
   seekFromEvent(e) {
     const r = this.content.getBoundingClientRect();
-    this.stage.seek((e.clientX - r.left) / this.pps);
+    this.stage.seek(Math.min(this.duration, Math.max(0, (e.clientX - r.left) / this.pps)));
+  }
+
+  // Drag the playhead. The video pauses while scrubbing and resumes after if it was playing;
+  // near the edges of a zoomed timeline it scrolls along.
+  scrub(e) {
+    e.preventDefault();
+    const video = this.stage.video;
+    const wasPlaying = !video.paused;
+    video.pause();
+    this.scrubbing = true;
+    this.content.classList.add('scrubbing');
+    this.content.setPointerCapture(e.pointerId);
+    let lastX = e.clientX, raf = 0;
+    const follow = () => {
+      const r = this.scroll.getBoundingClientRect();
+      const edge = 40;
+      const dx = lastX < r.left + edge ? lastX - (r.left + edge) : lastX > r.right - edge ? lastX - (r.right - edge) : 0;
+      if (dx) { this.scroll.scrollLeft += dx * 0.5; this.seekFromEvent({ clientX: lastX }); }
+      raf = this.scrubbing ? requestAnimationFrame(follow) : 0;
+    };
+    const move = (ev) => { lastX = ev.clientX; this.seekFromEvent(ev); };
+    const up = () => {
+      this.scrubbing = false;
+      cancelAnimationFrame(raf);
+      this.content.classList.remove('scrubbing');
+      this.content.removeEventListener('pointermove', move);
+      this.content.removeEventListener('pointerup', up);
+      this.content.removeEventListener('pointercancel', up);
+      if (wasPlaying) video.play().catch(() => {});
+    };
+    this.content.addEventListener('pointermove', move);
+    this.content.addEventListener('pointerup', up);
+    this.content.addEventListener('pointercancel', up);
+    this.seekFromEvent(e);
+    raf = requestAnimationFrame(follow);
   }
 
   refresh(what) {
@@ -142,7 +182,7 @@ export class Timeline {
     });
     this.track.replaceChildren(frag);
     const sel = state.captions.find((c) => c.id === state.selected);
-    this.info.textContent = sel ? 'Drag the block to move it, its edges to trim, and the white lines to fix word timing.' : 'Click a caption to adjust its timing.';
+    this.info.textContent = sel ? 'Drag the block to move it, its edges to trim, and the white lines to fix word timing.' : 'Drag the purple line to move through the video, or click a caption to adjust its timing.';
   }
 
   dragCaption(e, idx, mode) {

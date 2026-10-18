@@ -228,7 +228,9 @@ def config():
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "jobs": len(jobs), **transcribe.model_status()}
+    # RENDER_GIT_COMMIT is set by Render: shows which version of the code is live
+    version = os.environ.get("RENDER_GIT_COMMIT", "")[:7] or None
+    return {"status": "ok", "version": version, "jobs": len(jobs), **transcribe.model_status()}
 
 
 @app.get("/api/fonts")
@@ -514,6 +516,17 @@ def media_error(_, exc: media.MediaError):
 
 
 # ------------------------------------------------------------------ static
+
+@app.middleware("http")
+async def revalidate_app_files(request: Request, call_next):
+    """Pages, scripts and styles are checked for changes on every load, so an update
+    shows up straight away instead of an old cached copy (fonts and clips stay cached)."""
+    response = await call_next(request)
+    path = request.url.path
+    if path == "/" or path.endswith((".html", ".js", ".css", ".json", ".svg")) and not path.startswith("/fonts/"):
+        response.headers.setdefault("Cache-Control", "no-cache")
+    return response
+
 
 app.mount("/fonts", StaticFiles(directory=FONTS_DIR), name="fonts")
 app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")

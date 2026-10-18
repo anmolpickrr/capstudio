@@ -89,6 +89,17 @@ for (const [file, tpl, ext] of CASES) {
     const s2 = await store();
     if (s1.font === s0.font || s2.font !== s0.font) throw new Error(`undo didn't restore the style (${s0.font} → ${s1.font} → ${s2.font})`);
     console.log('✓ undo restores the previous style');
+    // drag the timeline playhead
+    const grip = await page.locator('.tl-head-grip').boundingBox();
+    const content = await page.locator('.tl-content').boundingBox();
+    await page.mouse.move(grip.x + grip.width / 2, grip.y + grip.height / 2);
+    await page.mouse.down();
+    await page.mouse.move(content.x + content.width * 0.5, grip.y + 8, { steps: 8 });
+    await page.mouse.up();
+    const t = await page.evaluate(() => document.querySelector('.frame video').currentTime);
+    const dur = await page.evaluate(() => document.querySelector('.frame video').duration);
+    if (Math.abs(t - dur * 0.5) > dur * 0.08) throw new Error(`dragging the playhead to the middle went to ${t.toFixed(2)}s of ${dur.toFixed(2)}s`);
+    console.log('✓ the timeline playhead can be dragged');
     if (errors.length) throw new Error(errors.join('; '));
   } catch (e) {
     fail('showcase / undo', e.message.split('\n')[0]);

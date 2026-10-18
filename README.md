@@ -69,7 +69,7 @@ That one scene is drawn two ways: as SVG for the live preview, and as an ASS scr
 
 Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
 
-**Live site:** https://caption-studio-ujgd.onrender.com on Render's free plan, set up from `render.yaml`. One-click setup: [Deploy to Render](https://render.com/deploy?repo=https://github.com/anmolpickrr/capstudio). Render redeploys on every push to `main`.
+**Live site:** https://caption-studio-ujgd.onrender.com on Render's free plan, set up from `render.yaml`. One-click setup: [Deploy to Render](https://render.com/deploy?repo=https://github.com/anmolpickrr/capstudio). After the tests pass on `main`, the Tests workflow triggers Render's deploy hook (GitHub secret `RENDER_DEPLOY_HOOK`). `/api/health` shows the live commit as `version`.
 - Captions come from Groq's hosted Whisper large-v3 (free tier). There's no on-server backup model: it doesn't fit in the free plan's memory. Render asks for `GROQ_API_KEY` during setup.
 - Sign-in is off (`AUTH_DISABLED=1` in `render.yaml`), so anyone with the address can use the site. To require Google sign-in (limited to @pickrr.com and @shiprocket.com), remove `AUTH_DISABLED` and set `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET` in Render. Google's redirect URI is `https://<service>.onrender.com/auth/callback`.
 - GitHub Pages only serves the files, so a copy opened there links to the live site (`LIVE_SITE` in `static/js/app/main.js`); the root `index.html` shows the live site in a full-window frame, so https://anmolpickrr.github.io/capstudio is a working address too (this needs sign-in off: with Google sign-in, use the onrender.com address).
