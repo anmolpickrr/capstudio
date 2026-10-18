@@ -58,7 +58,7 @@ window.addEventListener('beforeunload', (e) => {
 
 // The address the team uses. GitHub Pages only hosts these files, without the server
 // that makes captions, so a copy opened there points people to the live site instead.
-const LIVE_SITE = 'https://caption-studio.onrender.com';
+const LIVE_SITE = 'https://caption-studio-ujgd.onrender.com';
 
 function showFilesOnlyCopy() {
   $('#view').className = 'welcome';
