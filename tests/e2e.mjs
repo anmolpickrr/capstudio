@@ -66,6 +66,54 @@ for (const [file, tpl, ext] of CASES) {
   }
 }
 
+// Export in the browser (WebCodecs): the frames are drawn and encoded on the
+// user's computer instead of the server. Playwright's Chromium has no H.264
+// encoder, so the test asks for VP9; the pipeline is the same.
+for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'hormozi']]) {
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  await page.addInitScript(() => { window.__exportCodecs = ['vp9']; });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  page.on('console', (m) => { if (/Browser export unavailable/.test(m.text())) errors.push(m.text().split('\n')[0]); });
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + file);
+    await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
+    await page.click(`.tpl[data-id="${tpl}"]`);
+    await page.click('#export-btn');
+    const t0 = Date.now();
+    await page.click('#export-dialog .btn.brand');
+    await page.waitForSelector('#export-status a.btn', { timeout: 300000 });
+    const secs = (Date.now() - t0) / 1000;
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export-status a.btn')]);
+    const out = join(OUT, `browser-${dl.suggestedFilename()}`);
+    await dl.saveAs(out);
+    const streams = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries',
+      'stream=codec_type,codec_name,width,height,nb_read_frames', '-of', 'json', out])).streams;
+    const v = streams.find((x) => x.codec_type === 'video'), a = streams.find((x) => x.codec_type === 'audio');
+    const srcV = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
+      'stream=width,height,nb_read_frames', '-of', 'json', MEDIA + file])).streams[0];
+    const [w, hgt] = file.startsWith('rotated') ? [srcV.height, srcV.width] : [srcV.width, srcV.height];
+    const diffs = [];
+    if (v.width !== w || v.height !== hgt) diffs.push(`size ${v.width}x${v.height}, expected ${w}x${hgt}`);
+    if (v.nb_read_frames !== srcV.nb_read_frames) diffs.push(`${v.nb_read_frames} frames, expected ${srcV.nb_read_frames}`);
+    if (a?.codec_name !== 'aac') diffs.push(`audio ${a?.codec_name}, expected aac`);
+    if (dl.suggestedFilename() !== file) diffs.push(`file name ${dl.suggestedFilename()}`);
+    // captions are in the picture: the frame differs from the source's
+    const log = execFileSync('sh', ['-c', `ffmpeg -ss 3 -i "${MEDIA + file}" -ss 3 -i "${out}" -lavfi "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr" -frames:v 1 -f null - 2>&1`]).toString();
+    const psnr = Number((log.match(/average:([\d.]+)/) || [])[1]);
+    if (!(psnr < 35)) diffs.push(`no captions in the picture (PSNR ${psnr})`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log(`✓ in-browser export ${file} + ${tpl} → ${v.width}x${v.height}, ${v.nb_read_frames} frames, ${a.codec_name} audio, ${secs.toFixed(1)}s`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, `failure-browser-${tpl}.png`) }).catch(() => {});
+    fail(`in-browser export ${file} + ${tpl}`, e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

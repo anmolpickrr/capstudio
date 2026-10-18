@@ -1,14 +1,17 @@
 // Export: burn captions into the video at the original quality, add a subtitle
-// track without re-encoding, or download caption files.
+// track without re-encoding, or download caption files. Burning runs in the
+// browser when it can (fast, on the computer's video hardware) and on the
+// server otherwise.
 import { toASS, toSRT, toTXT, toVTT } from '../engine/index.js';
 import { ensureFonts } from '../engine/fonts.js';
 import { fontsFor } from '../engine/layout.js';
 import { api, sleep } from './api.js';
+import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
 import { $, download, h, toast } from './ui.js';
 
-let dlg = null, running = false, cancelled = false;
+let dlg = null, running = false, cancelled = false, blobUrl = null;
 
 const codecName = (c) => ({ h264: 'H.264', hevc: 'HEVC', prores: 'ProRes', vp9: 'VP9', av1: 'AV1' }[c] || c);
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -32,9 +35,12 @@ export function openExport() {
   dlg = $('#export-dialog');
   const info = state.project.info;
   const cfg = state.config;
-  const outCodec = info.vcodec === 'prores' ? 'ProRes (same profile)' : info.vcodec === 'hevc' && !cfg.lowPower ? 'HEVC' : 'H.264';
+  // ProRes is kept as ProRes, which only the server can write
+  const inBrowser = browserCanExport() && !!state.project.file && info.vcodec !== 'prores';
+  const outCodec = info.vcodec === 'prores' ? 'ProRes (same profile)' : info.vcodec === 'hevc' && !cfg.lowPower && !inBrowser ? 'HEVC' : 'H.264';
   // A small server can't draw captions into videos above 1080p (not enough memory).
-  const canBurn = !cfg.maxBurnPixels || info.width * info.height <= cfg.maxBurnPixels;
+  const serverCanBurn = !cfg.maxBurnPixels || info.width * info.height <= cfg.maxBurnPixels;
+  const canBurn = inBrowser || serverCanBurn;
   let quality = 'high';
   const qSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Quality' },
     [['max', 'Maximum'], ['high', 'High'], ['fast', 'Fast']].map(([v, t]) => h('button', { type: 'button', 'data-v': v, 'aria-pressed': String(v === quality),
@@ -56,7 +62,8 @@ export function openExport() {
       h('div', { class: 'specs' },
         h('span', {}, `${info.width}×${info.height}`), h('span', {}, info.fps ? `${+info.fps.toFixed(3)} fps` : 'Variable frame rate'),
         h('span', {}, codecName(info.vcodec) + (info.pixFmt?.includes('10') ? ' 10-bit' : '')), h('span', {}, fmtDur(info.duration))),
-      cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'Drawing the captions in takes a few minutes on this server, about 3 to 6 minutes for a 30-second reel. Keep this tab open while it runs.') : null,
+      inBrowser ? h('p', { class: 'note info' }, 'Your video is made right here on your computer, so there’s no waiting for the server. A 30-second reel usually takes well under a minute. Keep this tab open while it runs.')
+        : cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'This browser can’t make the video itself, so the server does it. That takes a few minutes, about 3 to 6 for a 30-second reel. For much faster exports, use Chrome or Edge. Keep this tab open while it runs.') : null,
       canBurn ? null : h('p', { class: 'note' }, `This server can draw captions into videos up to 1080p, and this one is ${info.width}×${info.height}. You can still add a subtitle track or download caption files.`),
       opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
         canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
@@ -74,8 +81,10 @@ export function openExport() {
     go.disabled = true;
     const bar = h('i');
     const msg = h('small', {}, 'Preparing captions…');
+    const local = new AbortController();
     const cancel = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
       cancelled = true;
+      local.abort();
       await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
     } }, 'Cancel');
     status.replaceChildren(h('div', { class: 'result' },
@@ -84,6 +93,30 @@ export function openExport() {
     try {
       const [W, H] = dims();
       await ensureFonts(fontsFor(state.captions, state.style));
+      if (kind === 'burn' && inBrowser) {
+        try {
+          const r = await exportInBrowser({
+            file: state.project.file, name: state.project.name || 'video.mp4', info, captions: state.captions,
+            style: state.style, spaced: spaced(), quality, signal: local.signal,
+            onProgress: (p, elapsed) => {
+              bar.style.width = `${Math.round(p * 100)}%`;
+              const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
+              msg.textContent = `${Math.round(p * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
+            },
+          });
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          blobUrl = URL.createObjectURL(r.blob);
+          showDone({ ...r, href: blobUrl });
+          return;
+        } catch (e) {
+          if (cancelled) { msg.textContent = 'Export cancelled.'; return; }
+          if (!serverCanBurn) throw e;
+          // the server can still do it, just more slowly
+          console.warn('Browser export unavailable, using the server:', e);
+          msg.textContent = e instanceof Unsupported ? 'This video needs the server, which is slower. Starting…' : 'Switching to the server, which is slower. Starting…';
+          bar.style.width = '0%';
+        }
+      }
       const body = kind === 'burn'
         ? { mode: 'burn', quality, ass_gz: await gzipBase64(toASS(state.captions, state.style, W, H, { spaced: spaced() })) }
         : { mode: 'soft', srt: toSRT(state.captions, state.style, W, H, spaced()), language: state.transcript?.language || 'und' };
@@ -112,7 +145,7 @@ export function openExport() {
   }
 
   function showDone(rr) {
-    const a = h('a', { class: 'btn brand', href: `/api/jobs/${state.project.job}/download`, download: rr.file,
+    const a = h('a', { class: 'btn brand', href: rr.href || `/api/jobs/${state.project.job}/download`, download: rr.file,
       html: '<span>Download</span>',
       onclick: () => { state.project.exported = true; emit('project'); } });
     status.replaceChildren(h('div', { class: 'result ok' },

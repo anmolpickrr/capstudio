@@ -4,9 +4,11 @@
 <svg id="stage" xmlns="http://www.w3.org/2000/svg"></svg>
 <script type="module">
   // Test page: draws one caption frame with the preview renderer and returns
-  // the matching ASS script, for tests/parity.mjs to compare.
+  // the matching ASS script and the in-browser export's frame (canvas), for
+  // tests/parity.mjs to compare.
   import { setCatalogue } from '/js/engine/fonts.js';
   import { CaptionEngine, SvgRenderer, toASS } from '/js/engine/index.js';
+  import { CanvasRenderer } from '/js/engine/canvas.js';
   import { withDefaults } from '/js/templates/base.js';
 
   const fonts = await (await fetch('/api/fonts')).json();
@@ -28,7 +30,14 @@
     const box = { x: Math.max(0, Math.floor(b.left - m)), y: Math.max(0, Math.floor(b.top - m)) };
     box.w = Math.min(W, Math.ceil(b.right + m)) - box.x; box.h = Math.min(H, Math.ceil(b.bottom + m)) - box.y;
     box.w -= box.w % 2; box.h -= box.h % 2;
-    return { ass: toASS([caption], s, W, H), box };
+    const canvas = new OffscreenCanvas(W, H);
+    const ctx = canvas.getContext('2d');
+    ctx.fillStyle = bg;
+    ctx.fillRect(0, 0, W, H);
+    new CanvasRenderer(W, H).render(ctx, engine.scenesAt(t), t);
+    const blob = await canvas.convertToBlob({ type: 'image/png' });
+    const png = btoa(Array.from(new Uint8Array(await blob.arrayBuffer()), (c) => String.fromCharCode(c)).join(''));
+    return { ass: toASS([caption], s, W, H), box, png };
   };
   window.ready = true;
 </script>

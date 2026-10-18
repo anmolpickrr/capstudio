@@ -26,7 +26,7 @@ Upload → captions generated automatically → choose a style → customise →
   Margins on 1080×1920 (top / bottom / sides): Instagram Reels 220 / 420 / 35 plus the button column; Instagram and Facebook Stories 270 / 380 / 65 (Meta: 14% / 20% / 6%); Facebook Reels 270 / 672 / 65 (Meta: 14% / 35% / 6%); YouTube Shorts 288 / 672 / 48 left, 192 right (Google's vertical video spec); TikTok 220 / 650 / 125 plus the button column; WhatsApp Status 250 / 400 / 48 (an estimate: WhatsApp publishes none). The source of each is shown under the format buttons. Covered areas are hatched and labelled with their margins in px; the safe area is outlined with a light grid. A status line says whether any caption crosses into a covered area, and "Move inside" adjusts position and width to fix it (undoable). The overlay is preview-only and never exported. Margins live in `static/js/app/safezones.js`.
 - **Undo / redo** for every edit (Ctrl+Z / Ctrl+Shift+Z).
 - **Export** has three options:
-  - **Burned-in video:** same resolution, frame rate, rotation, bit depth and audio. The encoder matches the source: H.264 → H.264, HEVC → HEVC (including 10-bit), ProRes → ProRes.
+  - **Burned-in video:** same resolution, frame rate, rotation and audio. In Chrome and Edge (and other browsers with WebCodecs) the video is made on the user's own computer: `static/js/app/browserexport.js` decodes the original file, draws the captions on each frame with the canvas renderer and encodes H.264 on the computer's video hardware ([Mediabunny](https://mediabunny.dev), vendored in `static/vendor/`). A 30-second reel takes seconds rather than minutes, and nothing is sent to the server. Audio is copied as is (AAC, MP3, AC-3, ALAC) or converted to AAC. When the browser can't do it (no encoder, a codec it can't decode such as ProRes, or audio it can't carry over), the server does it with ffmpeg/libass, and the encoder matches the source: H.264 → H.264, HEVC → HEVC (including 10-bit), ProRes → ProRes.
   - **Subtitle track only:** the original picture is kept untouched.
   - **Caption files:** SRT, WebVTT, styled ASS, or a plain transcript.
 
@@ -52,7 +52,7 @@ Captions are laid out once in the browser by `static/js/engine/`:
 - **Layout:** line breaks, word positions and boxes are computed once.
 - **Animation:** keyframe curves are evaluated from the same definitions.
 
-That one scene is drawn two ways: as SVG for the live preview, and as an ASS script that libass (inside ffmpeg) burns into the video.
+That one scene is drawn three ways: as SVG for the live preview, on a canvas for exports made in the browser (`static/js/engine/canvas.js`), and as an ASS script that libass (inside ffmpeg) burns into the video on the server.
 
 `tests/parity.mjs` checks this automatically. For every template and a dozen feature cases, it renders a frame each way and compares the pixels.
 
@@ -81,7 +81,7 @@ Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
   - ffmpeg runs single-threaded with a short look-ahead (a 1080p export peaks around 300 MB);
   - HEVC sources are exported as 8-bit H.264 at the same resolution and frame rate;
   - burned-in exports are limited to 1080p (subtitle tracks and caption files work at any size).
-- A 30-second reel takes a few minutes to export. The site sleeps after 15 idle minutes, and the next visit takes about a minute to wake it.
+- Exports made in the browser don't use the server at all. When the server has to export (other browsers, ProRes), a 30-second reel takes a few minutes. The site sleeps after 15 idle minutes, and the next visit takes about a minute to wake it.
 - `/api/health` shows the engine status.
 
 A Hugging Face Space (`deploy/huggingface/`) is also supported, but Docker Spaces now need a paid Hugging Face plan; run the "Deploy to Hugging Face" workflow by hand to use one.
@@ -131,14 +131,15 @@ Other rules:
 
 See `tests/README.md`:
 - **Python tests:** API, sign-in, engines, retention, deploy script.
-- **Browser end-to-end test:** five source formats (including file names), the first-page style showcase, undo.
-- **Preview-vs-export pixel comparison:** every template.
+- **Browser end-to-end test:** five source formats on the server (including file names), exports made in the browser (size, frame count, audio, rotation), the first-page style showcase, undo.
+- **Preview-vs-export pixel comparison:** every template, against both the server (libass) and the browser (canvas) export.
 
 ## Layout
 
 ```
 server/            FastAPI app: jobs, retention, transcription engines, sign-in, ffmpeg
-static/js/engine/  caption engine: fonts, measurement, layout, motion, scene, SVG preview, ASS export
+static/js/engine/  caption engine: fonts, measurement, layout, motion, scene, SVG preview, canvas and ASS export
+static/vendor/     Mediabunny (MPL-2.0), reads and writes video files for exports made in the browser
 static/js/templates/  default settings and the 50-style library
 static/js/app/     the interface: first page and showcase, studio, stage, timeline, panels, export
 fonts/             caption fonts (scripts/fetch_fonts.py)

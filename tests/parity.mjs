@@ -13,6 +13,7 @@ const BASE = process.env.BASE_URL || 'http://127.0.0.1:8765';
 const FONTS = new URL('../fonts', import.meta.url).pathname;
 const OUT = process.env.PARITY_OUT || join(tmpdir(), 'caption-parity');
 const MIN_PSNR = Number(process.env.MIN_PSNR || 20);
+const MIN_PSNR_BROWSER = Number(process.env.MIN_PSNR_BROWSER || 22);
 mkdirSync(OUT, { recursive: true });
 
 const filter = process.argv[2] || '';
@@ -25,7 +26,7 @@ for (const c of CASES.filter((x) => x.name.includes(filter))) {
   const { W, H, t } = c;
   const bg = c.bg || '#3a4a5a';
   await page.setViewportSize({ width: W, height: H });
-  const { ass, box } = await page.evaluate((arg) => window.renderCase(arg), { ...c, bg });
+  const { ass, box, png } = await page.evaluate((arg) => window.renderCase(arg), { ...c, bg });
   await page.waitForTimeout(150);
   const preview = join(OUT, `${c.name}-preview.png`);
   await page.locator('#stage').screenshot({ path: preview });
@@ -37,16 +38,22 @@ for (const c of CASES.filter((x) => x.name.includes(filter))) {
     '-vf', `ass=${assPath}:fontsdir=${FONTS}`, '-ss', String(t), '-frames:v', '1', exported]);
   // Score only the area around the caption, so empty background can't hide differences.
   const crop = `crop=${box.w}:${box.h}:${box.x}:${box.y}`;
-  let psnr;
-  try {
-    const log = execFileSync('sh', ['-c', `ffmpeg -i "${preview}" -i "${exported}" -lavfi "[0:v]format=rgb24,${crop}[a];[1:v]format=rgb24,${crop}[b];[a][b]psnr" -f null - 2>&1`]).toString();
-    psnr = Number((log.match(/average:([\d.]+|inf)/) || [])[1]?.replace('inf', '99'));
-  } catch { psnr = 0; }
+  const score = (a, b) => {
+    try {
+      const log = execFileSync('sh', ['-c', `ffmpeg -i "${a}" -i "${b}" -lavfi "[0:v]format=rgb24,${crop}[a];[1:v]format=rgb24,${crop}[b];[a][b]psnr" -f null - 2>&1`]).toString();
+      return Number((log.match(/average:([\d.]+|inf)/) || [])[1]?.replace('inf', '99'));
+    } catch { return 0; }
+  };
+  const psnr = score(preview, exported);
+  // the in-browser export draws with canvas: it should match the preview closely
+  const browserPng = join(OUT, `${c.name}-browser.png`);
+  writeFileSync(browserPng, Buffer.from(png, 'base64'));
+  const psnrBrowser = score(preview, browserPng);
   execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', preview, '-i', exported, '-filter_complex',
     `[0]${crop}[a];[1]${crop}[b];[a][b]vstack`, join(OUT, `${c.name}-compare.png`)]);
-  const ok = psnr >= (c.minPsnr || MIN_PSNR);
+  const ok = psnr >= (c.minPsnr || MIN_PSNR) && psnrBrowser >= MIN_PSNR_BROWSER;
   if (!ok) failed++;
-  console.log(`${ok ? '✓' : '✗'} ${c.name.padEnd(28)} PSNR ${psnr.toFixed(1)} dB`);
+  console.log(`${ok ? '✓' : '✗'} ${c.name.padEnd(28)} PSNR ${psnr.toFixed(1)} dB · browser export ${psnrBrowser.toFixed(1)} dB`);
 }
 await browser.close();
 console.log(failed ? `${failed} case(s) below threshold — see ${OUT}` : `all match — images in ${OUT}`);
