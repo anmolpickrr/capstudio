@@ -32,9 +32,9 @@ Upload → captions generated automatically → choose a style → customise →
   Exports keep the original file name (only the extension changes if the format does, e.g. WebM to MP4). They show progress, can be cancelled, and leave no partial files behind.
 
 **First page**
-- A headline set in caption typefaces, a phone playing a reel whose live captions change style on every loop, and small floating cards for real features (language detection, word timing, the style library, safe zones, original-quality export).
+- A headline set in caption typefaces, and a Reels-style phone mockup (the app's own header, buttons, username and audio line) whose live caption changes style on every loop. Small floating cards show real features: language detection, word timing, the style library, safe zones and original-quality export.
 - A strip of language names, each in its own script; a compact upload bar; a video can be dropped anywhere on the page.
-- Six short looping clips below, each drawing a different style live; clicking one makes it the starting style for the upload. Clips are built by `scripts/build_showcase.py` into `static/showcase/`.
+- A bento of style specimens on flat, editorial surfaces, each caption drawn live by the export engine with the style's name, category and key traits; clicking one makes it the starting style for the upload.
 
 **Languages**
 - Auto-detect.
@@ -140,7 +140,6 @@ server/            FastAPI app: jobs, retention, transcription engines, sign-in,
 static/js/engine/  caption engine: fonts, measurement, layout, motion, scene, SVG preview, ASS export
 static/js/templates/  default settings and the 42-style library
 static/js/app/     the interface: first page and showcase, studio, stage, timeline, panels, export
-static/showcase/   clips for the first-page style showcase (scripts/build_showcase.py)
 fonts/             caption fonts (scripts/fetch_fonts.py)
 deploy/render/     Render image (render.yaml at the root)
 deploy/huggingface/  Space image and deploy script

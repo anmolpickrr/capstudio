@@ -123,8 +123,8 @@ function welcome() {
       ticker,
       h('section', { class: 'looks' },
         h('div', { class: 'looks-head' },
-          h('h2', {}, 'Pick a style to start with'),
-          h('p', {}, 'It’s applied as soon as your captions are ready. The editor has 42 styles, and you can change every detail.')),
+          h('div', {}, h('span', { class: 'kicker' }, 'Styles'), h('h2', {}, 'Set in motion, word by word')),
+          h('p', {}, 'Each one is drawn live by the same engine that renders your video. Pick one to start with; all 42 are in the editor, and every detail can be changed.')),
         showcase(showStart))),
     h('div', { class: 'drop-veil' }, h('div', {}, h('b', {}, 'Drop your video to start'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))));
 

@@ -84,7 +84,7 @@ for (const [file, tpl, ext] of CASES) {
     const store = () => page.evaluate(async () => { const { state } = await import('/js/app/store.js'); return { id: state.templateId, font: state.style.font }; });
     const s0 = await store();
     if (s0.id !== 'karaoke') throw new Error(`the picked style wasn't used (got ${s0.id})`);
-    console.log('✓ first page: the hero phone and 6 styles play with captions, and the picked style is used for the upload');
+    console.log('✓ first page: the hero phone and the style specimens play with captions, and the picked style is used for the upload');
     await page.click('.tpl[data-id="aurora"]');
     const s1 = await store();
     await page.keyboard.press('Control+z');
