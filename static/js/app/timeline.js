@@ -3,6 +3,7 @@
 import { moveWordStart, retime } from '../engine/chunk.js';
 import { api } from './api.js';
 import { icon } from './icons.js';
+import { captionScale, deleteCaption, editCaption, scaleCaption, SCALE_MAX, SCALE_MIN, SCALE_STEP } from './captionops.js';
 import { checkpoint, emit, state } from './store.js';
 import { h } from './ui.js';
 
@@ -22,12 +23,11 @@ export class Timeline {
     this.head = h('div', { class: 'tl-head-line', title: 'Drag to move through the video' }, h('span', { class: 'tl-head-grip' }));
     this.content.append(this.ruler, this.wave, this.track, this.head);
     this.scroll.append(this.content);
-    this.info = h('span', { class: 'hint' });
+    this.info = h('span', { class: 'tl-info' });
     root.replaceChildren(
       h('div', { class: 'tl-head' },
         h('span', { class: 'label' }, 'Timeline'),
         this.info,
-        h('span', { style: { flex: 1 } }),
         h('button', { class: 'btn ghost sm icon-only', 'data-tip': 'Zoom out', html: icon('zoomOut'), onclick: () => this.setZoom(this.zoom / 1.6) }),
         h('button', { class: 'btn ghost sm icon-only', 'data-tip': 'Zoom in', html: icon('zoomIn'), onclick: () => this.setZoom(this.zoom * 1.6) }),
         h('button', { class: 'btn ghost sm', onclick: () => this.setZoom(1) }, 'Fit')),
@@ -164,7 +164,7 @@ export class Timeline {
     state.captions.forEach((c, idx) => {
       const el = h('div', {
         class: `tl-cap${c.id === state.activeCaption ? ' active' : ''}${c.id === state.selected ? ' selected' : ''}`,
-        style: { left: `${this.x(c.start)}px`, width: `${Math.max(4, this.x(c.end) - this.x(c.start))}px` },
+        style: { left: `${this.x(c.start)}px`, width: `${Math.max(4, this.x(Math.min(c.end, this.duration)) - this.x(c.start))}px` },
         title: c.words.map((w) => w.text).join(' '),
       }, c.words.map((w) => w.text).join(' '));
       const l = h('span', { class: 'edge l' }), r = h('span', { class: 'edge r' });
@@ -181,14 +181,37 @@ export class Timeline {
       frag.append(el);
     });
     this.track.replaceChildren(frag);
+    this.renderInfo();
+  }
+
+  // With a caption selected: its text, Edit, size and Delete. Otherwise a short how-to.
+  renderInfo() {
     const sel = state.captions.find((c) => c.id === state.selected);
-    this.info.textContent = sel ? 'Drag the block to move it, its edges to trim, and the white lines to fix word timing.' : 'Drag the purple line to move through the video, or click a caption to adjust its timing.';
+    if (!sel) {
+      this.info.replaceChildren(h('span', { class: 'hint' }, 'Drag the purple line to move through the video. Click a caption to select it, double-click to edit.'));
+      return;
+    }
+    const scale = captionScale(sel.id);
+    const btn = (label, tip, fn, disabled) => h('button', { class: 'btn ghost sm', type: 'button', 'data-tip': tip, disabled: disabled ? true : null, onclick: fn }, label);
+    this.info.replaceChildren(
+      h('span', { class: 'tl-sel-text', title: sel.words.map((w) => w.text).join(' ') }, sel.words.map((w) => w.text).join(' ')),
+      btn('Edit', 'Edit the text (double-click)', () => editCaption(sel.id)),
+      h('span', { class: 'tl-size', role: 'group', 'aria-label': 'Size of this caption' },
+        btn('A−', 'Smaller', () => scaleCaption(-SCALE_STEP, sel.id), scale <= SCALE_MIN),
+        h('span', { class: 'tl-size-value' }, `${Math.round(scale * 100)}%`),
+        btn('A+', 'Bigger', () => scaleCaption(SCALE_STEP, sel.id), scale >= SCALE_MAX)),
+      btn('Delete', 'Delete this caption (Delete key)', () => deleteCaption(sel.id)));
   }
 
   dragCaption(e, idx, mode) {
     e.preventDefault();
     const caps = state.captions;
     const c0 = caps[idx];
+    // a second press on the same caption within 400 ms opens it for editing
+    // (blocks are redrawn on selection, so the browser's dblclick can't be relied on)
+    const now = performance.now();
+    if (this.lastPress?.id === c0.id && now - this.lastPress.at < 400) { this.lastPress = null; editCaption(c0.id); return; }
+    this.lastPress = { id: c0.id, at: now };
     state.selected = c0.id;
     emit('selection');
     const startX = e.clientX;

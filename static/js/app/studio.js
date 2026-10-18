@@ -9,6 +9,7 @@ import { engine, leaveProject, startUpload, syncEngine } from './session.js';
 import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
 import { Timeline } from './timeline.js';
+import { deleteCaption, scaleCaption } from './captionops.js';
 import { showcase, stopShowcase } from './showcase.js';
 import { templateById } from '../templates/library.js';
 import { $, h, toast } from './ui.js';
@@ -44,6 +45,7 @@ async function onChange(what) {
   if (['style', 'captions', 'project'].includes(what)) {
     await syncEngine();
     stage?.redraw();
+    if (what === 'style') previewStyleChange();
   }
   refreshEditor(what);
 }
@@ -98,6 +100,34 @@ function welcome() {
         h('h2', {}, 'Pick a style to start with'),
         h('p', {}, 'It’s applied as soon as your captions are ready. The editor has 42 styles, and you can change every detail.')),
       showcase(showStart))));
+}
+
+// ---------------------------------------------------------------- live preview
+
+// Settings that only show while the caption plays (animations and spoken-word effects).
+const MOTION_KEYS = ['animIn', 'animOut', 'wordIn', 'cascade', 'speed', 'reveal', 'highlight', 'hlScale', 'hlColor', 'hlBgColor'];
+let lastStyle = null, lastTemplate = null, replayTimer = 0;
+
+// After a style change, make sure the result is visible: with the video paused,
+// jump to a caption if none is on screen, and replay it when motion changed.
+function previewStyleChange() {
+  const prev = lastStyle, prevTemplate = lastTemplate;
+  lastStyle = state.style;
+  lastTemplate = state.templateId;
+  if (!stage || !prev || prev === state.style || state.phase !== 'editing' || !state.captions.length) return;
+  const video = stage.video;
+  if (!video.paused || document.querySelector('.overlay.grabbing')) return;
+  const changed = Object.keys(state.style).filter((k) => state.style[k] !== prev[k]);
+  const t = video.currentTime;
+  if (!engine.scenesAt(t).length) {
+    const target = state.captions.find((c) => c.id === state.selected)
+      || state.captions.find((c) => c.start >= t) || state.captions[state.captions.length - 1];
+    stage.seek(Math.min(target.end - 0.05, target.start + Math.min(0.6, (target.end - target.start) / 2)));
+  }
+  if (changed.some((k) => MOTION_KEYS.includes(k)) || state.templateId !== prevTemplate) {
+    clearTimeout(replayTimer);
+    replayTimer = setTimeout(() => stage?.replayCaption(), 250); // wait for slider drags to settle
+  }
 }
 
 // ---------------------------------------------------------------- editor
@@ -195,6 +225,9 @@ document.addEventListener('keydown', (e) => {
   if (e.code === 'Space') { e.preventDefault(); stage?.toggle(); }
   if (e.key === 'ArrowLeft') { e.preventDefault(); stage?.seekBy(e.shiftKey ? -5 : -1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); stage?.seekBy(e.shiftKey ? 5 : 1); }
+  if ((e.key === 'Delete' || e.key === 'Backspace') && state.selected) { e.preventDefault(); deleteCaption(); }
+  if ((e.key === '+' || e.key === '=') && state.selected) scaleCaption(0.1);
+  if ((e.key === '-' || e.key === '_') && state.selected) scaleCaption(-0.1);
   if (e.key === ',') stage?.stepFrame(-1);
   if (e.key === '.') stage?.stepFrame(1);
 });

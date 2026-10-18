@@ -136,7 +136,7 @@ function split(c) {
   const mid = Math.ceil(c.words.length / 2);
   const left = c.words.slice(0, mid), right = c.words.slice(mid);
   setCaptions(state.captions.flatMap((x) => (x.id !== c.id ? [x] : [
-    { ...c, end: right[0].start, words: left }, { id: uid(), start: right[0].start, end: c.end, words: right }])));
+    { ...c, end: right[0].start, words: left }, { id: uid(), start: right[0].start, end: c.end, words: right, scale: c.scale }])));
 }
 
 function merge(c) {

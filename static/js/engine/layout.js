@@ -113,6 +113,8 @@ export function fitsCaption(words, style, W, H) {
 }
 
 export function layoutCaption(caption, style, W, H, spaced = true) {
+  // a caption can be made bigger or smaller than the rest (caption.scale)
+  if (caption.scale && caption.scale !== 1) style = { ...style, size: style.size * caption.scale };
   const r = ref(W, H);
   const fs = style.size * r;
   const words = wordSpec(caption, style, W, H);

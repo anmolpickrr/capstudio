@@ -7,7 +7,7 @@ import { stylePanel } from './base.js';
 
 function presetGrid(ctrls, key, presets) {
   const grid = h('div', { class: 'grid3' }, Object.entries(presets).map(([id, p]) => h('button', {
-    type: 'button', class: 'btn sm', 'data-v': id, onclick: () => { setStyle({ [key]: id }); replay(); },
+    type: 'button', class: 'btn sm', 'data-v': id, onclick: () => setStyle({ [key]: id }), // the preview replays by itself
   }, p.label)));
   return ctrls.add(grid, () => grid.querySelectorAll('button').forEach((b) => {
     const on = b.dataset.v === state.style[key];

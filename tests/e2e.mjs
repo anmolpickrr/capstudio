@@ -100,6 +100,21 @@ for (const [file, tpl, ext] of CASES) {
     const dur = await page.evaluate(() => document.querySelector('.frame video').duration);
     if (Math.abs(t - dur * 0.5) > dur * 0.08) throw new Error(`dragging the playhead to the middle went to ${t.toFixed(2)}s of ${dur.toFixed(2)}s`);
     console.log('✓ the timeline playhead can be dragged');
+    // one caption: bigger, delete with the Delete key, undo, double-click to edit
+    const caps = () => page.evaluate(async () => (await import('/js/app/store.js')).state.captions);
+    const n0 = (await caps()).length;
+    await page.click('.tl-cap >> nth=2', { position: { x: 8, y: 8 } });
+    await page.click('.tl-size button >> nth=1');
+    await page.click('.tl-size button >> nth=1');
+    if ((await caps())[2].scale !== 1.2) throw new Error(`A+ twice should give 120%, got ${(await caps())[2].scale}`);
+    await page.locator('body').press('Delete');
+    if ((await caps()).length !== n0 - 1) throw new Error('Delete key did not remove the selected caption');
+    await page.keyboard.press('Control+z');
+    if ((await caps()).length !== n0) throw new Error('undo did not bring the deleted caption back');
+    await page.click('.tl-cap >> nth=3', { position: { x: 8, y: 8 } });
+    await page.click('.tl-cap >> nth=3', { position: { x: 8, y: 8 } });
+    await page.waitForFunction(() => document.activeElement?.classList.contains('cap-text'), null, { timeout: 3000 });
+    console.log('✓ a caption can be resized, deleted with the Delete key (and undone), and edited by double-click');
     if (errors.length) throw new Error(errors.join('; '));
   } catch (e) {
     fail('showcase / undo', e.message.split('\n')[0]);

@@ -118,7 +118,10 @@ async function applyTranscript(tr) {
     toast('No speech was found in this video. If there is speech, pick the language and generate again.', 'error', 10000);
     return;
   }
-  const captions = await rechunk(tr.words);
+  // nothing may run past the end of the video
+  const dur = state.project?.info?.duration || Infinity;
+  const words = tr.words.filter((w) => w.start < dur - 0.05).map((w) => (w.end > dur ? { ...w, end: dur } : w));
+  const captions = (await rechunk(words)).map((c) => (c.end > dur ? { ...c, end: dur } : c));
   set({ transcript: tr, captions, phase: 'editing', selected: null }, 'project');
   clearHistory();
   emit('captions');

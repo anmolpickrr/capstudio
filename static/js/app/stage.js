@@ -3,6 +3,7 @@
 import { SvgRenderer } from '../engine/index.js';
 import { icon } from './icons.js';
 import { engine } from './session.js';
+import { editCaption } from './captionops.js';
 import { check, fitStyle, renderOverlay, zoneById, zoneFits, ZONES } from './safezones.js';
 import { emit, setStyle, state } from './store.js';
 import { $, fmtTime, h, toast } from './ui.js';
@@ -166,7 +167,7 @@ export class Stage {
   }
 
   // ------------------------------------------------------------ playback
-  toggle() { if (this.video.paused) this.video.play().catch(() => {}); else this.video.pause(); }
+  toggle() { this.stopAt = this.restAt = null; if (this.video.paused) this.video.play().catch(() => {}); else this.video.pause(); }
   seek(t) { this.video.currentTime = Math.min(Math.max(0, t), this.duration || t); this.draw(); }
   seekBy(d) { this.seek(this.video.currentTime + d); }
   stepFrame(dir) { this.video.pause(); this.seek(this.video.currentTime + dir / (state.project?.info?.fps || 30)); }
@@ -177,6 +178,8 @@ export class Stage {
     this.seek(c.start);
     this.video.play().catch(() => {});
     this.stopAt = c.end;
+    // afterwards, rest on a frame where the caption is fully shown
+    this.restAt = Math.max(c.start, c.end - Math.min(0.35, (c.end - c.start) / 3));
   }
 
   syncPlay() {
@@ -188,7 +191,11 @@ export class Stage {
   loop() {
     if (this.dead) return;
     this.draw();
-    if (this.stopAt && this.video.currentTime >= this.stopAt) { this.video.pause(); this.stopAt = null; }
+    if (this.stopAt && this.video.currentTime >= this.stopAt) {
+      this.video.pause();
+      this.stopAt = null;
+      if (this.restAt != null) { this.seek(this.restAt); this.restAt = null; }
+    }
     if (!this.video.paused) requestAnimationFrame(() => this.loop());
   }
 
@@ -232,7 +239,12 @@ export class Stage {
       if (drag && !drag.moved) {
         const t = this.video.currentTime;
         const c = state.captions.find((x) => t >= x.start && t < x.end);
-        if (c) { state.selected = c.id; emit('selection'); } else this.toggle();
+        if (c) {
+          // second click on the same caption: edit its text
+          const now = performance.now();
+          if (this.lastTap?.id === c.id && now - this.lastTap.at < 400) { this.lastTap = null; editCaption(c.id); }
+          else { this.lastTap = { id: c.id, at: now }; state.selected = c.id; emit('selection'); }
+        } else this.toggle();
       }
       drag = null;
       this.svg.classList.remove('grabbing');

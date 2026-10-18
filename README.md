@@ -19,6 +19,8 @@ Upload → captions generated automatically → choose a style → customise →
 - **Captions panel:** edit text and timestamps; split, merge or delete captions; star keywords; find & replace; move all captions earlier or later. Words the speech engine was unsure about are underlined.
 - **Timeline:** shows the audio waveform. Drag caption blocks to move them and their edges to trim; a shared edge moves both captions. Drag word markers to fix word timing. Zoom in and out.
 - **Preview:** play, frame-step, replay the current caption, speed control, and drag the caption to position it.
+- **One caption at a time:** select a caption on the timeline or the video to get Edit, a size control (50–250%, also the + and − keys) and Delete (also the Delete key). Double-click a caption to type in it. All of it can be undone.
+- **Live preview:** changing a motion or highlight setting replays the current caption; any style change made while no caption is on screen jumps to one, so the result is always visible.
 - **Safe zones:** one click above the preview shows a see-through overlay for Instagram Reels, Instagram Stories, Facebook Reels or TikTok (9:16 videos), or a 10% title-safe area for any video. Covered areas are hatched and labelled with their margins in px; the safe area is outlined with a light grid. A status line says whether any caption crosses into a covered area, and "Move inside" adjusts position and width to fix it (undoable). The overlay is preview-only and never exported. Margins live in `static/js/app/safezones.js`.
 - **Undo / redo** for every edit (Ctrl+Z / Ctrl+Shift+Z).
 - **Export** has three options:
