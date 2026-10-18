@@ -83,6 +83,7 @@ Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
   - burned-in exports are limited to 1080p (subtitle tracks and caption files work at any size).
 - Exports made in the browser don't use the server at all. When the server has to export (other browsers, ProRes), a 30-second reel takes a few minutes. The site sleeps after 15 idle minutes, and the next visit takes about a minute to wake it.
 - `/api/health` shows the engine status.
+- The page loads its scripts and styles from `/v/<fingerprint>/` (a hash of the app's files, worked out when the server starts), cached for good at that address. Each release changes the fingerprint, so browsers always get the new files together and can't mix an old cached script with a new page.
 
 A Hugging Face Space (`deploy/huggingface/`) is also supported, but Docker Spaces now need a paid Hugging Face plan; run the "Deploy to Hugging Face" workflow by hand to use one.
 
@@ -103,7 +104,7 @@ The build uses the GPU by default; add `--build-arg GPU=0` to build for CPU only
 | `LOCAL_FALLBACK` | `1` | With a hosted engine, use the on-server model when the service is busy or unreachable. |
 | `WHISPER_MODEL` | `large-v3` | On-server model (`large-v3-turbo` on the Space). |
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS` | — | Google sign-in. |
-| `JOB_TTL_MIN` / `DOWNLOAD_GRACE_MIN` | `120` / `15` | Delete a job after this many minutes of inactivity, or this many minutes after its download. |
+| `JOB_TTL_MIN` / `DOWNLOAD_GRACE_MIN` | `120` / `20` | Delete a job after this many minutes of inactivity, or this many minutes after its download. |
 | `MAX_UPLOAD_MB` | `4096` | Upload limit. |
 | `LOW_POWER` | `0` | `1` for small machines: low-memory ffmpeg settings, HEVC exported as H.264, burn-in limited to 1080p. |
 | `DATA_DIR` | `$TMPDIR/caption-panel` | Scratch space. It must be a dedicated, empty folder; the server refuses to start in a folder holding files it didn't create. |
@@ -114,7 +115,7 @@ Run a single server process: jobs are tracked in memory.
 ## Privacy and retention
 
 Each job lives in one random-ID folder. It is deleted at the first of these:
-- 15 minutes after download;
+- 20 minutes after download (for videos made in the browser: 20 minutes after they are saved);
 - 2 hours of inactivity;
 - the editor starting a new video or closing the tab;
 - a server restart.

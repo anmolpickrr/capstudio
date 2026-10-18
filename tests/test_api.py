@@ -121,3 +121,27 @@ def test_downloaded_export_has_the_original_name(client, video):
 def test_session_cookie_secure_on_spaces():
     # On Hugging Face the SPACE_HOST variable is set and cookies must be Secure.
     assert ("SPACE_HOST" in os.environ) == bool(os.environ.get("SPACE_HOST"))
+
+
+def test_app_files_have_versioned_addresses(client):
+    """Each release loads its scripts from new addresses, so no browser can run an old
+    cached script against a new page."""
+    r = client.get("/")
+    assert r.headers["cache-control"] == "no-cache"
+    v = main.APP_VERSION
+    assert f'src="/v/{v}/js/app/main.js"' in r.text and f'href="/v/{v}/css/studio.css"' in r.text
+    js = client.get(f"/v/{v}/js/app/main.js")
+    assert js.status_code == 200 and "immutable" in js.headers["cache-control"]
+    assert "javascript" in js.headers["content-type"]
+    assert client.get("/v/old/js/app/main.js").headers["cache-control"] == "no-cache"
+    assert client.get(f"/v/{v}/../server/main.py").status_code == 404
+    assert client.get(f"/v/{v}/%2e%2e/server/main.py").status_code == 404
+
+
+def test_browser_export_starts_the_download_grace(client, video):
+    job = upload(client, video)
+    r = client.post(f"/api/jobs/{job['id']}/downloaded")
+    assert r.status_code == 200
+    j = main.jobs[job["id"]]
+    assert j.expires_at() == pytest.approx(j.downloaded + main.DOWNLOAD_GRACE_MIN * 60)
+    assert main.DOWNLOAD_GRACE_MIN == 20

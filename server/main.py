@@ -2,7 +2,8 @@
 
 Everything a job produces lives in DATA_DIR/<job-id>/ and is removed by the
 retention sweeper:
-  * DOWNLOAD_GRACE_MIN after the first download of a finished video,
+  * DOWNLOAD_GRACE_MIN (20) after the first download of a finished video, or after a video
+    made in the browser is saved,
   * JOB_TTL_MIN after the job was last touched, whatever its state,
   * immediately when the editor clicks "Delete now" or closes the tab,
   * on server start (nothing survives a restart).
@@ -11,6 +12,7 @@ Uploaded media and transcripts are never written anywhere else and never logged.
 from __future__ import annotations
 
 import base64
+import hashlib
 import json
 import logging
 import os
@@ -29,7 +31,7 @@ from dataclasses import dataclass, field
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
@@ -44,7 +46,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 DATA_DIR = pathlib.Path(os.environ.get("DATA_DIR") or pathlib.Path(tempfile.gettempdir()) / "caption-panel")
 MAX_UPLOAD_MB = int(os.environ.get("MAX_UPLOAD_MB", "4096"))
 JOB_TTL_MIN = float(os.environ.get("JOB_TTL_MIN", "120"))
-DOWNLOAD_GRACE_MIN = float(os.environ.get("DOWNLOAD_GRACE_MIN", "15"))
+DOWNLOAD_GRACE_MIN = float(os.environ.get("DOWNLOAD_GRACE_MIN", "20"))
 SWEEP_SECONDS = 30
 
 # Hosted engines handle several videos at once; the on-server model one at a time.
@@ -512,6 +514,17 @@ def download(job_id: str, request: Request):
     return FileResponse(job.output, filename=job.output_name)
 
 
+@app.post("/api/jobs/{job_id}/downloaded")
+def downloaded_in_browser(job_id: str, request: Request):
+    """The video was made and saved in the browser: the uploaded copy is only kept a
+    little longer, in case the server has to export it again."""
+    job = get_job(job_id, request)
+    if not job.downloaded:
+        job.downloaded = time.time()
+        log.info("job %s exported in the browser; deleting in %s min", job.id, DOWNLOAD_GRACE_MIN)
+    return {"ok": True}
+
+
 @app.exception_handler(media.MediaError)
 def media_error(_, exc: media.MediaError):
     return JSONResponse({"detail": str(exc)}, status_code=500)
@@ -519,16 +532,52 @@ def media_error(_, exc: media.MediaError):
 
 # ------------------------------------------------------------------ static
 
+STATIC = ROOT / "static"
+
+
+def _app_version() -> str:
+    """A fingerprint of the app's files. The page loads its scripts and styles from
+    /v/<fingerprint>/, so each release has new addresses and a browser can never mix
+    an old cached script with a new page."""
+    h = hashlib.sha1()
+    for f in sorted(STATIC.rglob("*")):
+        if f.is_file() and f.suffix in (".js", ".css", ".html", ".svg"):
+            h.update(str(f.relative_to(STATIC)).encode())
+            h.update(f.read_bytes())
+    return h.hexdigest()[:12]
+
+
+APP_VERSION = _app_version()
+
+
+@app.get("/")
+@app.get("/index.html")
+def index_page():
+    html = (STATIC / "index.html").read_text()
+    html = re.sub(r'(href|src)="(css|js)/', rf'\1="/v/{APP_VERSION}/\2/', html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
+@app.get("/v/{version}/{path:path}")
+def versioned_file(version: str, path: str):
+    f = (STATIC / path).resolve()
+    if not f.is_relative_to(STATIC) or not f.is_file():
+        raise HTTPException(404, "Not found.")
+    # this release's files never change at this address; an older page gets today's files
+    cache = "public, max-age=31536000, immutable" if version == APP_VERSION else "no-cache"
+    return FileResponse(f, headers={"Cache-Control": cache})
+
+
 @app.middleware("http")
 async def revalidate_app_files(request: Request, call_next):
     """Pages, scripts and styles are checked for changes on every load, so an update
     shows up straight away instead of an old cached copy (fonts and clips stay cached)."""
     response = await call_next(request)
     path = request.url.path
-    if path == "/" or path.endswith((".html", ".js", ".css", ".json", ".svg")) and not path.startswith("/fonts/"):
+    if path.endswith((".html", ".js", ".css", ".json", ".svg")) and not path.startswith(("/fonts/", "/v/")):
         response.headers.setdefault("Cache-Control", "no-cache")
     return response
 
 
 app.mount("/fonts", StaticFiles(directory=FONTS_DIR), name="fonts")
-app.mount("/", StaticFiles(directory=ROOT / "static", html=True), name="static")
+app.mount("/", StaticFiles(directory=STATIC, html=True), name="static")

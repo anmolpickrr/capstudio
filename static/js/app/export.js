@@ -147,7 +147,12 @@ export function openExport() {
   function showDone(rr) {
     const a = h('a', { class: 'btn brand', href: rr.href || `/api/jobs/${state.project.job}/download`, download: rr.file,
       html: '<span>Download</span>',
-      onclick: () => { state.project.exported = true; emit('project'); } });
+      onclick: () => {
+        state.project.exported = true;
+        emit('project');
+        // made in the browser: tell the server, which then deletes the upload soon
+        if (rr.href) api(`/api/jobs/${state.project.job}/downloaded`, { method: 'POST' }).catch(() => {});
+      } });
     status.replaceChildren(h('div', { class: 'result ok' },
       h('div', { class: 'result-row' }, h('div', {}, h('b', {}, 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a)));
     if (!dlg.open) toast('Your video is ready. Open Export to download it.', 'ok', 8000);
