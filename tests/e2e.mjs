@@ -131,7 +131,7 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
     await page.click('.look[data-template="karaoke"]');
     await page.setInputFiles('#file-input', MEDIA + 'land.webm');
     await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
-    const store = () => page.evaluate(async () => { const { state } = await import('/js/app/store.js'); return { id: state.templateId, font: state.style.font }; });
+    const store = () => page.evaluate(async () => { const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js')); return { id: state.templateId, font: state.style.font }; });
     const s0 = await store();
     if (s0.id !== 'karaoke') throw new Error(`the picked style wasn't used (got ${s0.id})`);
     console.log('✓ first page: the hero phone and the style specimens play with captions, and the picked style is used for the upload');
@@ -153,7 +153,7 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
     if (Math.abs(t - dur * 0.5) > dur * 0.08) throw new Error(`dragging the playhead to the middle went to ${t.toFixed(2)}s of ${dur.toFixed(2)}s`);
     console.log('✓ the timeline playhead can be dragged');
     // one caption: bigger, delete with the Delete key, undo, double-click to edit
-    const caps = () => page.evaluate(async () => (await import('/js/app/store.js')).state.captions);
+    const caps = () => page.evaluate(async () => (await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'))).state.captions);
     const n0 = (await caps()).length;
     await page.click('.tl-cap >> nth=2', { position: { x: 8, y: 8 } });
     await page.click('.tl-size button >> nth=1');
