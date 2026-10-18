@@ -69,6 +69,11 @@ export const positionPanel = stylePanel({
         slider(ctrls, { label: 'Max width', key: 'width', min: 30, max: 96, step: 1, format: (v) => `${v}%` }),
         lengthSlider(ctrls, { label: 'Max words per caption', key: 'maxWords', min: 1, max: 14 }),
         lengthSlider(ctrls, { label: 'Max lines', key: 'maxLines', min: 1, max: 4 }),
+        h('label', { class: 'switch' }, h('span', {}, 'One word per line'), (() => {
+          const i = h('input', { type: 'checkbox', role: 'switch', checked: state.style.stack ? true : null });
+          i.addEventListener('change', () => applyLength({ stack: i.checked, maxLines: Math.max(state.style.maxLines, i.checked ? state.style.maxWords : 0) }));
+          return i;
+        })()),
         h('p', { class: 'hint' }, 'Changing words or lines re-splits all captions (you can undo).')),
       section('Expressive',
         slider(ctrls, { label: 'Stagger lines', key: 'stagger', min: 0, max: 160, step: 2 }),

@@ -11,7 +11,7 @@ import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js'
 import { Timeline } from './timeline.js';
 import { deleteCaption, scaleCaption } from './captionops.js';
 import { heroPhone, showcase, stopShowcase } from './showcase.js';
-import { templateById } from '../templates/library.js';
+import { templateById, TEMPLATES } from '../templates/library.js';
 import { $, h, toast } from './ui.js';
 
 let view = null;
@@ -95,7 +95,7 @@ function welcome() {
       h('div', { class: 'f-words' }, [['आज', '0:01.2'], ['हम', '0:01.6'], ['सीखेंगे', '0:01.9']].map(([w, t]) => h('span', {}, h('b', {}, w), h('em', {}, t)))),
       h('div', { class: 'f-wave' }, Array.from({ length: 28 }, (_, i) => h('i', { style: { height: `${20 + Math.round(Math.abs(Math.sin(i * 1.7) * 70))}%` } })))),
     h('div', { class: 'float right f-card f-type' },
-      h('small', {}, '42 styles'),
+      h('small', {}, `${TEMPLATES.length} styles`),
       h('div', { class: 'f-specimens' }, h('span', { class: 's1' }, 'Aa'), h('span', { class: 's2' }, 'Aa'), h('span', { class: 's3' }, 'Aa'), h('span', { class: 's4' }, 'अ'))),
     h('div', { class: 'float left f-card f-export' },
       h('small', {}, 'Export'), h('b', {}, '1080 × 1920 · 30 fps'), h('span', {}, 'Same quality as your upload')),
@@ -120,7 +120,7 @@ function welcome() {
       h('section', { class: 'looks' },
         h('div', { class: 'looks-head' },
           h('div', {}, h('span', { class: 'kicker' }, 'Styles'), h('h2', {}, 'Set in motion, word by word')),
-          h('p', {}, 'Each one is drawn live by the same engine that renders your video. Pick one to start with; all 42 are in the editor, and every detail can be changed.')),
+          h('p', {}, `Each one is drawn live by the same engine that renders your video. Pick one to start with; all ${TEMPLATES.length} are in the editor, and every detail can be changed.`)),
         showcase(showStart))),
     h('div', { class: 'drop-veil' }, h('div', {}, h('b', {}, 'Drop your video to start'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))));
 

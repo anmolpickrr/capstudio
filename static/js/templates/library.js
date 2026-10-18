@@ -5,6 +5,7 @@
 import { withDefaults } from './base.js';
 
 export const CATEGORIES = [
+  { id: 'trending', name: 'Trending', badge: true },
   { id: 'kinetic', name: 'Kinetic typography' },
   { id: 'creator', name: 'Creator & influencer' },
   { id: 'bold', name: 'Bold social' },
@@ -22,6 +23,56 @@ export const CATEGORIES = [
 const T = (id, name, category, note, style) => ({ id, name, category, note, style: withDefaults(style) });
 
 export const TEMPLATES = [
+  // Trending: the looks top creators use right now. A small lead-in over one big
+  // keyword, mixed fonts, words that build up as they're spoken, soft glow.
+  T('two-tier', 'Two-tier', 'trending', 'Small lead-in, big lime keyword', {
+    font: 'Inter-Bold', size: 70, letterSpacing: -2, punctuation: 'strip', lineHeight: 0.84,
+    emphasis: 'auto', emphLine: true, emphScale: 3.6, emphFont: 'Inter-Black', emphColor: '#D7FF3F',
+    shadowY: 4, shadowBlur: 16, shadowOpacity: 0.55, reveal: true, wordIn: 'rise',
+    maxWords: 4, maxLines: 3, width: 84, vPos: 'middle', vOffset: 10,
+  }),
+  T('serif-stack', 'Serif stack', 'trending', 'Clean sans with a serif keyword, soft glow', {
+    font: 'Inter-Bold', size: 68, letterSpacing: -2.5, lineHeight: 0.8,
+    emphasis: 'auto', emphLine: true, emphScale: 3.8, emphFont: 'InstrumentSerif-Regular',
+    glow: 8, glowColor: '#FFFFFF', glowOpacity: 0.28, reveal: true, wordIn: 'blur',
+    maxWords: 5, maxLines: 3, width: 82, vPos: 'middle', vOffset: 10,
+  }),
+  T('scatter', 'Scatter', 'trending', 'Heavy lowercase, one word a line, staggered', {
+    font: 'Inter-Black', size: 170, letterSpacing: -8, textCase: 'lower', punctuation: 'strip', lineHeight: 0.84,
+    stack: true, stagger: 90, emphasis: 'auto', emphScale: 1.4,
+    shadowY: 6, shadowBlur: 20, shadowOpacity: 0.5, reveal: true, wordIn: 'pop',
+    maxWords: 3, maxLines: 3, width: 90, vPos: 'middle', vOffset: 0,
+  }),
+  T('hook', 'Hook', 'trending', 'Bold italic caps, keyword in red', {
+    font: 'Poppins-ExtraBoldItalic', size: 160, textCase: 'upper', punctuation: 'strip', lineHeight: 0.9,
+    emphasis: 'last', emphLine: true, emphColor: '#FF2D46', emphScale: 1.1,
+    shadowY: 6, shadowBlur: 12, shadowOpacity: 0.7, animIn: 'pop',
+    maxWords: 4, maxLines: 3, width: 88, vPos: 'middle', vOffset: 12,
+  }),
+  T('hype', 'Hype', 'trending', 'Violet caps lead-in, huge italic keyword', {
+    font: 'Poppins-ExtraBoldItalic', size: 64, textCase: 'upper', punctuation: 'strip', color: '#B98BFF', lineHeight: 0.88,
+    emphasis: 'last', emphLine: true, emphScale: 4, emphColor: '#FFFFFF',
+    glow: 7, glowColor: '#7C3AED', glowOpacity: 0.55, shadowY: 6, shadowBlur: 10, shadowOpacity: 0.6, animIn: 'zoom',
+    maxWords: 3, maxLines: 3, width: 90, vPos: 'middle', vOffset: 12,
+  }),
+  T('big-word', 'Big word', 'trending', 'One word at a time; long words turn serif italic', {
+    font: 'Inter-Black', size: 180, letterSpacing: -7, textCase: 'upper', punctuation: 'strip',
+    emphasis: 'auto', emphFont: 'PlayfairDisplay-SemiBoldItalic', emphScale: 1,
+    shadowY: 6, shadowBlur: 22, shadowOpacity: 0.55, animIn: 'blur',
+    maxWords: 1, maxLines: 1, width: 92, vPos: 'middle', vOffset: -16,
+  }),
+  T('soft-glow', 'Soft glow', 'trending', 'Mixed case with a soft white glow, words blur in', {
+    font: 'Inter-Bold', size: 116, letterSpacing: -4, lineHeight: 0.92,
+    glow: 10, glowColor: '#FFFFFF', glowOpacity: 0.35, reveal: true, wordIn: 'blur',
+    maxWords: 5, maxLines: 2, width: 80, vPos: 'middle', vOffset: 12,
+  }),
+  T('desi-tier', 'Desi two-tier', 'trending', 'Two-tier made for Hindi and Hinglish', {
+    font: 'Baloo2-SemiBold', size: 62, lineHeight: 0.9,
+    emphasis: 'auto', emphLine: true, emphScale: 3.6, emphFont: 'Baloo2-ExtraBold', emphColor: '#FFB627',
+    shadowY: 5, shadowBlur: 14, shadowOpacity: 0.6, reveal: true, wordIn: 'rise',
+    maxWords: 4, maxLines: 3, width: 86, vPos: 'middle', vOffset: 10,
+  }),
+
   // Kinetic typography
   T('punch', 'Punch', 'kinetic', 'One word at a time, stamped in', {
     font: 'Anton-Regular', size: 150, textCase: 'upper', punctuation: 'strip', maxWords: 1, maxLines: 1,

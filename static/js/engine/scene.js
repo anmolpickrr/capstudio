@@ -75,7 +75,7 @@ function wordTransform(scene, i, t) {
   const ax = w.cx, ay = w.bottom + m.dy * H;
   // local point (lx, ly) relative to the word anchor -> screen
   const map = (lx, ly) => rotate(scene, t, O.x + g.scale * (ax + sw * lx - O.x), O.y + g.scale * (ay + sw * ly - O.y) + g.dy * H, g);
-  return { map, scale: g.scale * sw, opacity: g.opacity * m.opacity, visible: m.visible, blur: g.blur, g };
+  return { map, scale: g.scale * sw, opacity: g.opacity * m.opacity, visible: m.visible, blur: g.blur + (m.blur || 0), g };
 }
 
 function groupTransform(scene, t) {

@@ -39,7 +39,7 @@ const SPECIMENS = [
     text: 'Launching tonight for every store. Free shipping on your first order.' },
 ];
 const HERO_TEXT = 'Meet the new one click checkout. No forms. No waiting. Your customers pay in seconds.';
-const HERO_STYLES = ['hormozi', 'karaoke', 'popstar', 'aurora', 'neon', 'magazine'];
+const HERO_STYLES = ['two-tier', 'hormozi', 'serif-stack', 'hype', 'karaoke', 'scatter'];
 
 let raf = 0;
 let active = false;

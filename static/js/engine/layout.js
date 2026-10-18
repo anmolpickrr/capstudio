@@ -20,6 +20,19 @@ export function emphasisSet(caption, style) {
   const set = new Set();
   if (style.emphasis === 'none' || !style.emphasis) return set;
   caption.words.forEach((w, i) => { if (w.emph) set.add(i); });
+  // A one-word caption is emphasised when it's a number or a long word (for
+  // styles that switch font on the big words).
+  if (style.emphasis === 'auto' && !set.size && caption.words.length === 1) {
+    const core = caption.words[0].text.replace(/[^\p{L}\p{N}%₹$]/gu, '');
+    if (/[\d%₹$]/.test(core) || [...core].length >= 8) set.add(0);
+  }
+  // 'last': the punchline, i.e. a number if there is one, else the last meaningful word
+  if (style.emphasis === 'last' && !set.size) {
+    const core = (w) => w.text.replace(/[^\p{L}\p{N}%₹$]/gu, '').toLowerCase();
+    let pick = caption.words.findIndex((w) => /[\d%₹$]/.test(core(w)));
+    if (pick < 0) for (let i = caption.words.length - 1; i >= 0; i--) { const c = core(caption.words[i]); if (c && !STOP.has(c)) { pick = i; break; } }
+    if (pick >= 0) set.add(pick);
+  }
   if (style.emphasis === 'auto' && !set.size && caption.words.length > 1) {
     let best = -1, score = -1;
     caption.words.forEach((w, i) => {
@@ -63,11 +76,36 @@ function wordSpec(caption, style, W, H) {
       desc: size * (1 - font.ascent),
     };
   });
+  // A word wider than the caption area (a long keyword at a big size) is scaled
+  // down to fit, so it never runs off the screen.
+  const maxW = maxTextWidth(style, W);
+  for (const sp of specs) {
+    if (sp.w <= maxW) continue;
+    const k = maxW / sp.w;
+    sp.size *= k; sp.w *= k; sp.space *= k; sp.asc *= k; sp.desc *= k;
+  }
   // When the spoken word grows, it grows into its neighbours: leave room for the
   // larger of each pair (shapes around words already get room above).
   const grow = style.highlight !== 'none' && !boxed ? Math.max(0, (style.hlScale || 1) - 1) / 2 : 0;
   if (grow) specs.forEach((sp, i) => { if (specs[i + 1]) sp.space += grow * Math.max(sp.w, specs[i + 1].w); });
   return specs;
+}
+
+// Line breaks for a caption. `stack` styles put every word on its own line;
+// `emphLine` styles give the emphasised word a line of its own (a small lead-in
+// above or below a big keyword); others break for balanced line lengths.
+function captionLines(words, style, maxWidth, spaced) {
+  if (!words.length) return [];
+  if (style.stack) return words.map((_, i) => [i, i + 1]);
+  if (style.emphLine && words.some((w) => w.emph)) {
+    const out = [];
+    let a = 0;
+    const run = (b) => { if (b > a) for (const [x, y] of breakLines(words.slice(a, b), maxWidth, spaced)) out.push([a + x, a + y]); };
+    words.forEach((w, i) => { if (w.emph) { run(i); out.push([i, i + 1]); a = i + 1; } });
+    run(words.length);
+    return out;
+  }
+  return breakLines(words, maxWidth, spaced);
 }
 
 // Balanced line breaks: fewest lines that fit maxWidth, then even line lengths.
@@ -120,7 +158,7 @@ export function maxTextWidth(style, W) {
 // the transcript into captions).
 export function fitsCaption(words, style, W, H) {
   const spec = wordSpec({ words }, style, W, H);
-  const lines = breakLines(spec, maxTextWidth(style, W), true);
+  const lines = captionLines(spec, style, maxTextWidth(style, W), true);
   return lines.length <= style.maxLines;
 }
 
@@ -130,7 +168,7 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
   const r = ref(W, H);
   const fs = style.size * r;
   const words = wordSpec(caption, style, W, H);
-  const ranges = words.length ? breakLines(words, maxTextWidth(style, W), spaced) : [];
+  const ranges = captionLines(words, style, maxTextWidth(style, W), spaced);
   const gap = (style.lineHeight - 1) * fs;
 
   // vertical metrics per line

@@ -51,23 +51,25 @@ export const textPanel = stylePanel({
         s.gradientTo && s.tilt ? h('p', { class: 'note' }, 'Gradients are turned off while the caption is tilted (Layout → Tilt).') : null,
       ),
       section('Keyword emphasis',
-        segmented(ctrls, { key: 'emphasis', options: [['none', 'Off'], ['auto', 'Automatic'], ['marked', 'Words I mark']],
+        segmented(ctrls, { key: 'emphasis', options: [['none', 'Off'], ['auto', 'Auto'], ['last', 'Last word'], ['marked', 'Marked']],
           onChange: (v) => setStyle({ emphasis: v, ...(v !== 'none' && !state.style.emphColor && !state.style.emphBg && state.style.emphScale === 1
             ? { emphColor: '#FFE14D', emphScale: 1.2 } : {}) }) }),
         s.emphasis === 'none' ? h('p', { class: 'hint' }, 'Make one word per caption stand out: bigger, a different colour or font, or on a marker.') : null,
-        s.emphasis !== 'none' ? h('p', { class: 'hint' }, s.emphasis === 'auto'
-          ? 'Picks numbers first, then the most meaningful word. Words you star in Captions always win.'
-          : 'Star words in the Captions panel to emphasise them.') : null,
+        s.emphasis !== 'none' ? h('p', { class: 'hint' }, {
+          auto: 'Picks numbers first, then the most meaningful word. Words you star in Captions always win.',
+          last: 'The punchline: a number if there is one, else the last meaningful word. Starred words win.',
+        }[s.emphasis] || 'Star words in the Captions panel to emphasise them.') : null,
         ...(s.emphasis !== 'none' ? [
           colorField(ctrls, { label: 'Keyword colour', key: 'emphColor' }),
-          slider(ctrls, { label: 'Keyword size', key: 'emphScale', min: 1, max: 2, step: 0.05, format: (v) => `${Math.round(v * 100)}%` }),
+          slider(ctrls, { label: 'Keyword size', key: 'emphScale', min: 1, max: 3, step: 0.05, format: (v) => `${Math.round(v * 100)}%` }),
+          toggle(ctrls, { label: 'Keyword on its own line', key: 'emphLine' }),
           h('div', { class: 'field' }, h('span', { class: 'label' }, 'Keyword font'), emphFont),
           toggle(ctrls, { label: 'Marker behind keyword', key: 'emphBg' }),
           s.emphBg ? colorField(ctrls, { label: 'Marker colour', key: 'emphBgColor' }) : null,
         ] : []),
       ),
       more('Spacing & punctuation',
-        slider(ctrls, { label: 'Letter spacing', key: 'letterSpacing', min: -4, max: 20, step: 0.5 }),
+        slider(ctrls, { label: 'Letter spacing', key: 'letterSpacing', min: -8, max: 20, step: 0.5 }),
         state.style.letterSpacing && state.captions.some((c) => c.words.some((w) => needsShaping(w.text)))
           ? h('p', { class: 'hint' }, 'Hindi and other Indian scripts keep their normal spacing, so their letters stay joined.') : null,
         slider(ctrls, { label: 'Line height', key: 'lineHeight', min: 0.7, max: 1.8, step: 0.05, format: (v) => `${v.toFixed(2)}×` }),

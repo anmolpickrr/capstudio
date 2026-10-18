@@ -24,6 +24,8 @@ export const DEFAULT_STYLE = {
   // keyword emphasis
   emphasis: 'none',          // none | auto | marked
   emphColor: null, emphScale: 1, emphFont: null, emphBg: false, emphBgColor: '#FFE14D',
+  emphLine: false,           // the emphasised word gets a line of its own
+  stack: false,              // every word on its own line
   // spoken-word highlight
   highlight: 'none',         // none | color | pill | sweep | progressive
   hlColor: '#FFE14D', hlBgColor: '#7C5CFF', hlScale: 1,

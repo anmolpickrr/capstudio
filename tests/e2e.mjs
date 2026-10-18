@@ -19,6 +19,8 @@ const CASES = [
   ['vert_hevc10.mp4', 'punch', 'mp4'],
   ['prores.mov', 'magazine', 'mov'],
   ['rotated.mp4', 'aurora', 'mp4'],
+  ['vert.webm', 'two-tier', 'mp4'],
+  ['vert.webm', 'serif-stack', 'mp4'],
 ];
 
 const probe = (file) => JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries',

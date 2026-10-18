@@ -30,9 +30,9 @@ function sampleCaption(tpl) {
 // Thumbnails show the style centred in a 4:3 frame, enlarged so it reads at
 // card size (every size-related setting scales together, so proportions hold).
 const PX_KEYS = ['size', 'letterSpacing', 'outline', 'shadowX', 'shadowY', 'shadowBlur', 'glow', 'bgRadius', 'bgPadX', 'bgPadY', 'stagger'];
-const previewStyle = (tpl) => {
+const previewStyle = (tpl, k = 2) => {
   const s = { ...tpl.style, vPos: 'middle', vOffset: 0, hPos: 'center', hOffset: 0, width: 96, maxLines: Math.max(3, tpl.style.maxLines) };
-  for (const k of PX_KEYS) s[k] = (s[k] || 0) * 2;
+  for (const key of PX_KEYS) s[key] = (s[key] || 0) * k;
   return s;
 };
 
@@ -41,12 +41,20 @@ async function renderCard(id, t = null) {
   const tpl = TEMPLATES.find((x) => x.id === id);
   if (!card || !tpl) return;
   const caption = sampleCaption(tpl);
-  const style = previewStyle(tpl);
+  let style = previewStyle(tpl);
   await ensureFonts(fontsFor([caption], style));
   card.scene = buildScene(caption, style, PREVIEW_W, PREVIEW_H, true);
+  // big stacked styles can outgrow the card: shrink until the whole caption shows
+  const b = card.scene.layout.block;
+  const over = Math.max((b.right - b.left) / (PREVIEW_W * 0.8), (b.bottom - b.top) / (PREVIEW_H * 0.68));
+  if (over > 1) {
+    style = previewStyle(tpl, 2 / over);
+    card.scene = buildScene(caption, style, PREVIEW_W, PREVIEW_H, true);
+  }
   card.renderer.clear();
   const n = caption.words.length;
-  const at = t ?? (n > 1 ? caption.words[Math.max(0, n - 2)].start + 0.1 : caption.words[0].start + 0.5);
+  // a moment after the last-but-one word starts, once its entrance has settled
+  const at = t ?? (n > 1 ? caption.words[Math.max(0, n - 2)].start + 0.28 : caption.words[0].start + 0.5);
   card.renderer.render([card.scene], at);
   card.rendered = true;
 }
@@ -96,7 +104,7 @@ function card(tpl) {
     onmouseleave: () => { const c = cards.get(tpl.id); if (c) { c.playing = false; renderCard(tpl.id); } },
     onfocus: () => animate(tpl.id), onblur: () => { const c = cards.get(tpl.id); if (c) c.playing = false; } },
   h('span', { class: 'check', html: icon('check') }), thumb,
-  h('span', { class: 'meta' }, h('b', {}, tpl.name), h('small', {}, tpl.note)));
+  h('span', { class: 'meta' }, h('b', {}, tpl.name, tpl.category === 'trending' ? h('i', { class: 'tpl-badge' }, 'Trending') : null), h('small', {}, tpl.note)));
   cards.set(tpl.id, { el, renderer: new SvgRenderer(svg), rendered: false });
   observer.observe(el);
   return el;
@@ -122,7 +130,7 @@ function renderGrid() {
     return;
   }
   grid.replaceChildren(...groups.map((g) => h('div', { class: 'tpl-group' },
-    category === 'all' ? h('h4', {}, g.name) : null,
+    category === 'all' ? h('h4', { class: g.badge ? 'trending' : null }, g.name) : null,
     h('div', { class: 'tpl-grid' }, g.items.map(card)))));
   markSelected();
 }
@@ -133,7 +141,7 @@ export const templatesPanel = {
     search.addEventListener('input', () => { query = search.value; renderGrid(); });
     const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Categories' },
       [{ id: 'all', name: 'All' }, ...CATEGORIES].map((c) => h('button', {
-        class: 'chip', type: 'button', 'aria-pressed': String(c.id === category),
+        class: `chip${c.badge ? ' chip-trending' : ''}`, type: 'button', 'aria-pressed': String(c.id === category),
         onclick: (e) => {
           category = c.id;
           chips.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));

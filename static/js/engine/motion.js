@@ -35,6 +35,7 @@ export const WORD_IN = {
   fade: { label: 'Fade', opacity: [[0, 0], [0.16, 1, 'out']] },
   drop: { label: 'Drop', opacity: [[0, 0], [0.05, 1]], dy: [[0, -0.04], [0.16, 0.004, 'in'], [0.22, 0, 'out']] },
   zoom: { label: 'Zoom', opacity: [[0, 0], [0.08, 1]], scale: [[0, 1.6], [0.16, 1, 'out']] },
+  blur: { label: 'Blur in', opacity: [[0, 0], [0.18, 1, 'out']], blur: [[0, 10], [0.26, 0, 'out']], dy: [[0, 0.008], [0.26, 0, 'out']] },
 };
 
 export const CASCADE_GAP = 0.07; // seconds between words for "cascade" entrances
@@ -92,7 +93,7 @@ export function wordAppears(style, caption, i) {
 // Word-level motion at time t: visibility, opacity, scale, vertical shift.
 export function wordMotion(style, caption, i, t) {
   const at = wordAppears(style, caption, i);
-  const r = { visible: true, opacity: 1, scale: 1, dy: 0 };
+  const r = { visible: true, opacity: 1, scale: 1, dy: 0, blur: 0 };
   if (at !== null) {
     if (t < at) return { ...r, visible: false, opacity: 0 };
     const preset = WORD_IN[style.wordIn] || WORD_IN.none;
@@ -101,6 +102,8 @@ export function wordMotion(style, caption, i, t) {
     const o = track(scaled(preset.opacity, speed), rel);
     const s = track(scaled(preset.scale, speed), rel);
     const d = track(scaled(preset.dy, speed), rel);
+    const bl = track(scaled(preset.blur, speed), rel);
+    if (bl !== null) r.blur = bl;
     if (o !== null) r.opacity = o;
     if (s !== null) r.scale = s;
     if (d !== null) r.dy = d;
