@@ -32,5 +32,7 @@ jobs:
             echo "::warning title=Not deployed::Add the RENDER_DEPLOY_HOOK secret so pushes update the live site."
             exit 0
           fi
-          curl -fsS -X POST "$HOOK?ref=$GITHUB_SHA" > /dev/null
+          # the hook already carries "?key=…", so the commit is added with "&"
+          case "$HOOK" in *\?*) SEP="&" ;; *) SEP="?" ;; esac
+          curl -fsS -X POST "${HOOK}${SEP}ref=${GITHUB_SHA}" > /dev/null
           echo "Render deploy started for ${GITHUB_SHA::7}" >> "$GITHUB_STEP_SUMMARY"
