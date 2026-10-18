@@ -1,10 +1,11 @@
 // The preview: the video with the live caption overlay, playback controls,
-// safe-area guides, drag-to-position, and the processing overlay.
+// safe-zone overlays, drag-to-position, and the processing overlay.
 import { SvgRenderer } from '../engine/index.js';
 import { icon } from './icons.js';
 import { engine } from './session.js';
+import { check, fitStyle, renderOverlay, zoneById, zoneFits, ZONES } from './safezones.js';
 import { emit, setStyle, state } from './store.js';
-import { $, fmtTime, h } from './ui.js';
+import { $, fmtTime, h, toast } from './ui.js';
 
 export class Stage {
   constructor(root) {
@@ -14,13 +15,14 @@ export class Stage {
     this.svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
     this.svg.setAttribute('class', 'overlay grab');
     this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
-    this.guides = h('div', { class: 'guides', hidden: true });
+    this.guides = h('div', { class: 'guides', hidden: true, 'aria-hidden': 'true' });
     this.processing = h('div', { class: 'processing', hidden: true });
     this.frame = h('div', { class: 'frame' }, this.video, this.svg, this.guides);
     this.stage = h('div', { class: 'stage' }, this.frame, this.processing);
     this.renderer = new SvgRenderer(this.svg);
     this.transport = this.buildTransport();
-    root.replaceChildren(this.stage, this.transport);
+    this.zoneBar = this.buildZoneBar();
+    root.replaceChildren(this.zoneBar, this.stage, this.transport);
 
     this.ro = new ResizeObserver(() => this.fit());
     this.ro.observe(this.stage);
@@ -50,13 +52,11 @@ export class Stage {
     const rate = h('select', { class: 'select', style: { width: '74px', height: '30px' }, 'aria-label': 'Playback speed' },
       ['0.5', '0.75', '1', '1.25', '1.5'].map((r) => h('option', { value: r, selected: r === '1' ? true : null }, `${r}×`)));
     rate.addEventListener('change', () => { this.video.playbackRate = Number(rate.value); });
-    this.guideBtn = h('button', { class: 'btn ghost icon-only', 'data-tip': 'Safe-area guides', html: icon('guide'),
-      onclick: () => { state.guides = !state.guides; this.refresh(); } });
     return h('div', { class: 'transport' },
       this.playBtn,
       h('button', { class: 'btn ghost icon-only', 'data-tip': 'Previous frame (,)', html: icon('arrowLeft'), onclick: () => this.stepFrame(-1) }),
       h('button', { class: 'btn ghost icon-only', 'data-tip': 'Replay this caption', html: icon('replay'), onclick: () => this.replayCaption() }),
-      this.timeEl, h('span', { class: 'grow' }), rate, this.guideBtn, this.muteBtn);
+      this.timeEl, h('span', { class: 'grow' }), rate, this.muteBtn);
   }
 
   // ------------------------------------------------------------ source & sizing
@@ -64,8 +64,6 @@ export class Stage {
     const p = state.project;
     if (!p) return;
     if (p.src && this.src !== p.src) { this.src = p.src; this.proxyTried = false; this.video.src = p.src; }
-    this.guides.hidden = !state.guides;
-    this.guideBtn.setAttribute('aria-pressed', String(state.guides));
     this.renderGuides();
     const busy = state.phase === 'uploading' || state.phase === 'generating';
     this.processing.hidden = !busy;
@@ -118,14 +116,53 @@ export class Stage {
       h('p', { class: 'hint' }, 'While you wait, you can pick a style on the left.')));
   }
 
+  // ------------------------------------------------------------ safe zones
+  buildZoneBar() {
+    this.zoneButtons = ZONES.map((z) => h('button', { type: 'button', class: 'zone-chip', 'data-zone': z.id,
+      onclick: () => { state.safeZone = z.id; this.zoneKey = null; this.refresh(); } }, z.label));
+    this.zoneStatus = h('div', { class: 'zone-status', role: 'status', 'aria-live': 'polite' });
+    return h('div', { class: 'zone-bar' },
+      h('span', { class: 'zone-title' }, 'Safe zone'),
+      h('div', { class: 'zone-chips', role: 'group', 'aria-label': 'Safe zone format' }, this.zoneButtons),
+      this.zoneStatus);
+  }
+
   renderGuides() {
-    if (!state.guides) return;
-    const vertical = this.H > this.W * 1.2;
-    const zones = vertical ? [
-      h('div', { class: 'ui-zone', style: { left: 0, right: 0, bottom: 0, height: '20%' } }, h('span', {}, 'App buttons & description')),
-      h('div', { class: 'ui-zone', style: { right: 0, top: '45%', bottom: '20%', width: '13%' } }, h('span', {}, 'Icons')),
-    ] : [];
-    this.guides.replaceChildren(h('div', { class: 'safe' }), ...zones);
+    const fits = (z) => zoneFits(z, this.W, this.H);
+    for (const b of this.zoneButtons) {
+      const z = zoneById(b.dataset.zone);
+      b.setAttribute('aria-pressed', String(b.dataset.zone === state.safeZone));
+      b.disabled = !fits(z);
+      b.title = fits(z) ? '' : 'Made for 9:16 vertical videos';
+    }
+    let zone = zoneById(state.safeZone);
+    if (!fits(zone)) { state.safeZone = 'off'; zone = zoneById('off'); }
+    this.guides.hidden = zone.id === 'off';
+    const key = [zone.id, this.W, this.H].join('|');
+    if (key !== this.overlayKey) { this.overlayKey = key; renderOverlay(this.guides, zone, this.W, this.H); }
+    this.renderZoneStatus(zone);
+  }
+
+  // Do any captions cross into covered areas? Recomputed only when something changed.
+  renderZoneStatus(zone) {
+    if (zone.id === 'off' || state.phase !== 'editing' || !state.captions.length) { this.zoneStatus.replaceChildren(); this.zoneKey = null; return; }
+    if (this.zoneKey && this.zoneKey.style === state.style && this.zoneKey.captions === state.captions && this.zoneKey.zone === zone.id) return;
+    this.zoneKey = { style: state.style, captions: state.captions, zone: zone.id };
+    const { count } = check(state.captions, state.style, zone, this.W, this.H);
+    if (!count) {
+      this.zoneStatus.replaceChildren(h('span', { class: 'zone-ok' }, 'All captions are inside the safe zone'));
+      return;
+    }
+    const fix = h('button', { class: 'btn sm', type: 'button', onclick: () => {
+      const s = fitStyle(state.captions, state.style, zone, this.W, this.H);
+      if (!s) { toast('These captions are too big to fit. Try a smaller size or fewer words per caption.', 'error'); return; }
+      const patch = {};
+      for (const k of ['vPos', 'vOffset', 'hPos', 'hOffset', 'width', 'align']) if (s[k] !== state.style[k]) patch[k] = s[k];
+      setStyle(patch, 'fit-safe-zone');
+      toast(`Moved inside the ${zone.label} safe zone. Undo with Ctrl+Z.`, 'ok', 3500);
+    } }, 'Move inside');
+    this.zoneStatus.replaceChildren(h('span', { class: 'zone-warn' },
+      count === 1 ? '1 caption is in a covered area' : `${count} captions are in covered areas`), fix);
   }
 
   // ------------------------------------------------------------ playback

@@ -15,7 +15,7 @@ export const state = {
   templateId: null,
   selected: null,       // selected caption id
   tool: 'templates',
-  guides: false,
+  safeZone: 'off',      // safe-zone overlay shown on the preview (see safezones.js)
   language: 'auto',
   vocabulary: '',
 };

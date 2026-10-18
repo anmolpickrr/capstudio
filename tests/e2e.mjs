@@ -97,6 +97,35 @@ for (const [file, tpl, ext] of CASES) {
   }
 }
 
+// Safe zones: one click shows the overlay, covered captions are reported, and
+// "Move inside" fixes them. The overlay is preview-only.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
+    for (const zone of ['ig-reels', 'ig-stories', 'fb-reels', 'tiktok']) {
+      await page.click(`.zone-chip[data-zone="${zone}"]`);
+      if (await page.locator('.guides .sz-safe').count() !== 1) throw new Error(`${zone}: no safe-area outline`);
+      if (await page.locator('.zone-status button').count()) {
+        await page.click('.zone-status button');
+        await page.waitForFunction(() => document.querySelector('.zone-ok'), null, { timeout: 5000 });
+      }
+    }
+    await page.click('.zone-chip[data-zone="off"]');
+    if (!(await page.locator('.guides').isHidden())) throw new Error('overlay still shown with Off');
+    if (errors.length) throw new Error(errors.join('; '));
+    console.log('✓ safe zones: overlays for 4 platforms, and "Move inside" brings every caption into the safe area');
+  } catch (e) {
+    fail('safe zones', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 await browser.close();
 console.log(failed ? `${failed} failed — screenshots in ${OUT}` : 'all passed');
 process.exit(failed ? 1 : 0);
