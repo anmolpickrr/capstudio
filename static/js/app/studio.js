@@ -67,9 +67,6 @@ function welcome() {
       ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
   langSel.value = state.language;
   langSel.addEventListener('change', () => set({ language: langSel.value }));
-  const vocab = h('input', { class: 'input', id: 'pre-vocab', placeholder: 'Names to spell right, e.g. Shiprocket', value: state.vocabulary,
-    'aria-label': 'Names to spell right' });
-  vocab.addEventListener('input', () => set({ vocabulary: vocab.value }));
 
   const maxGB = Math.round(state.config.maxUploadMB / 1024 * 10) / 10;
   const limit = maxGB >= 1 ? `${maxGB} GB` : `${state.config.maxUploadMB} MB`;
@@ -86,7 +83,7 @@ function welcome() {
     h('div', { class: 'upload-main' },
       h('button', { class: 'btn brand lg', type: 'button', onclick: () => file.click() }, 'Choose a video'),
       h('div', { class: 'upload-hint' }, h('b', {}, 'or drop it anywhere on this page'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))),
-    h('div', { class: 'upload-options' }, langSel, vocab),
+    h('label', { class: 'upload-options' }, h('span', {}, 'Language in the video'), langSel),
     startWith, file);
 
   // two columns of floating cards around the phone, aligned in rows
