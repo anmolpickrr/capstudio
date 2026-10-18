@@ -119,13 +119,14 @@ export class Stage {
 
   // ------------------------------------------------------------ safe zones
   buildZoneBar() {
-    this.zoneButtons = ZONES.map((z) => h('button', { type: 'button', class: 'zone-chip', 'data-zone': z.id,
+    this.zoneButtons = ZONES.map((z) => h('button', { type: 'button', class: 'zone-chip', 'data-zone': z.id, title: z.name && z.name !== z.label ? z.name : null,
       onclick: () => { state.safeZone = z.id; this.zoneKey = null; this.refresh(); } }, z.label));
     this.zoneStatus = h('div', { class: 'zone-status', role: 'status', 'aria-live': 'polite' });
+    this.zoneSource = h('p', { class: 'zone-source' });
     return h('div', { class: 'zone-bar' },
       h('span', { class: 'zone-title' }, 'Safe zone'),
       h('div', { class: 'zone-chips', role: 'group', 'aria-label': 'Safe zone format' }, this.zoneButtons),
-      this.zoneStatus);
+      this.zoneStatus, this.zoneSource);
   }
 
   renderGuides() {
@@ -134,11 +135,12 @@ export class Stage {
       const z = zoneById(b.dataset.zone);
       b.setAttribute('aria-pressed', String(b.dataset.zone === state.safeZone));
       b.disabled = !fits(z);
-      b.title = fits(z) ? '' : 'Made for 9:16 vertical videos';
+      b.title = fits(z) ? (z.name && z.name !== z.label ? z.name : '') : `${z.name}: made for 9:16 vertical videos`;
     }
     let zone = zoneById(state.safeZone);
     if (!fits(zone)) { state.safeZone = 'off'; zone = zoneById('off'); }
     this.guides.hidden = zone.id === 'off';
+    this.zoneSource.textContent = zone.id === 'off' ? '' : `${zone.name}: ${zone.source}`;
     const key = [zone.id, this.W, this.H].join('|');
     if (key !== this.overlayKey) { this.overlayKey = key; renderOverlay(this.guides, zone, this.W, this.H); }
     this.renderZoneStatus(zone);
@@ -160,7 +162,7 @@ export class Stage {
       const patch = {};
       for (const k of ['vPos', 'vOffset', 'hPos', 'hOffset', 'width', 'align']) if (s[k] !== state.style[k]) patch[k] = s[k];
       setStyle(patch, 'fit-safe-zone');
-      toast(`Moved inside the ${zone.label} safe zone. Undo with Ctrl+Z.`, 'ok', 3500);
+      toast(`Moved inside the ${zone.name} safe zone. Undo with Ctrl+Z.`, 'ok', 3500);
     } }, 'Move inside');
     this.zoneStatus.replaceChildren(h('span', { class: 'zone-warn' },
       count === 1 ? '1 caption is in a covered area' : `${count} captions are in covered areas`), fix);

@@ -6,38 +6,61 @@ import { effectiveStyle } from '../engine/scene.js';
 import { layoutCaption } from '../engine/layout.js';
 import { h } from './ui.js';
 
-// Margins in px of a 1080×1920 frame. Sources: Instagram Reels and TikTok from
-// the editors' templates (220/420/35 and 220/650/125, buttons 250 wide);
-// Stories and Facebook Reels from Meta's placement guidance (top 14%,
-// bottom 18% / 35%, sides 6%).
+// Margins in px of a 1080×1920 frame, with where each figure comes from.
+// Platforms publish safe areas for ads, not organic posts; organic UI covers
+// about the same areas, so these are the best available guide.
 export const ZONES = [
   { id: 'off', label: 'Off' },
   {
-    id: 'ig-reels', label: 'Instagram Reels', vertical: true,
+    id: 'ig-reels', label: 'IG Reels', name: 'Instagram Reels', vertical: true,
     top: 220, bottom: 420, left: 35, right: 35,
     areas: { top: 'Reels header and camera', bottom: 'Name, caption and audio' },
     extra: [{ x: 960, y: 1180, w: 120, h: 320, label: 'Buttons' }],
+    source: 'Instagram Reels template (220 / 420 / 35 px), plus the button column',
   },
   {
-    id: 'ig-stories', label: 'Instagram Stories', vertical: true,
-    top: 250, bottom: 340, left: 64, right: 64,
-    areas: { top: 'Progress bar and profile', bottom: 'Reply bar' },
+    id: 'ig-stories', label: 'IG Stories', name: 'Instagram Stories', vertical: true,
+    top: 270, bottom: 380, left: 65, right: 65,
+    areas: { top: 'Progress bar, profile and close', bottom: 'Reply bar' },
+    source: 'Meta Stories guidance: 14% top, 20% bottom, 6% sides',
   },
   {
-    id: 'fb-reels', label: 'Facebook Reels', vertical: true,
-    top: 270, bottom: 670, left: 65, right: 65,
+    id: 'fb-reels', label: 'FB Reels', name: 'Facebook Reels', vertical: true,
+    top: 270, bottom: 672, left: 65, right: 65,
     areas: { top: 'Reels header', bottom: 'Name, caption, buttons and audio' },
+    source: 'Meta Reels guidance: 14% top, 35% bottom, 6% sides',
   },
   {
-    id: 'tiktok', label: 'TikTok', vertical: true,
+    id: 'fb-stories', label: 'FB Stories', name: 'Facebook Stories', vertical: true,
+    top: 270, bottom: 380, left: 65, right: 65,
+    areas: { top: 'Progress bar, profile and close', bottom: 'Reply and reactions' },
+    source: 'Meta Stories guidance: 14% top, 20% bottom, 6% sides',
+  },
+  {
+    id: 'yt-shorts', label: 'YT Shorts', name: 'YouTube Shorts', vertical: true,
+    top: 288, bottom: 672, left: 48, right: 192,
+    areas: { top: 'Search and menu', bottom: 'Channel, title and sound' },
+    rightLabel: 'Like, comment, share',
+    source: 'Google vertical video spec for Shorts: 288 / 672 / 48 / 192 px',
+  },
+  {
+    id: 'whatsapp', label: 'WhatsApp', name: 'WhatsApp Status', vertical: true,
+    top: 250, bottom: 400, left: 48, right: 48,
+    areas: { top: 'Progress bar, name and time', bottom: 'Reply bar' },
+    source: 'Estimate: WhatsApp publishes no safe area (250 / 400 px, 48 px sides)',
+  },
+  {
+    id: 'tiktok', label: 'TikTok', name: 'TikTok', vertical: true,
     top: 220, bottom: 650, left: 125, right: 125,
     areas: { top: 'Following / For You tabs', bottom: 'Name, caption and sound' },
     extra: [{ x: 830, y: 395, w: 250, h: 875, label: 'Buttons' }],
+    source: 'TikTok template (220 / 650 / 125 px), plus the button column',
   },
   {
-    id: 'title', label: 'Title safe',
+    id: 'title', label: 'Title safe', name: 'Title safe',
     // 10% on every side of any frame (the classic broadcast title-safe area)
     relative: 0.1,
+    source: '10% on every side, for any video',
   },
 ];
 
@@ -62,7 +85,7 @@ export function resolve(zone, W, H) {
     safe: { x: m.left, y: m.top, w: W - m.left - m.right, h: H - m.top - m.bottom },
     margins: Object.fromEntries(Object.entries(m).map(([k, v]) => [k, Math.round(v)])),
     extra: (zone.extra || []).map((e) => ({ x: e.x * sx, y: e.y * sy, w: e.w * sx, h: e.h * sy, label: e.label })),
-    areas: zone.areas || {},
+    areas: { ...(zone.areas || {}), right: zone.rightLabel },
   };
 }
 
@@ -82,7 +105,7 @@ export function renderOverlay(el, zone, W, H) {
     band({ left: 0, top: 0, width: '100%', height: pct(safe.y, H) }, areas.top, 'top'),
     band({ left: 0, bottom: 0, width: '100%', height: pct(H - safe.y - safe.h, H) }, areas.bottom, 'bottom'),
     band({ left: 0, top: pct(safe.y, H), width: pct(safe.x, W), height: pct(safe.h, H) }),
-    band({ right: 0, top: pct(safe.y, H), width: pct(W - safe.x - safe.w, W), height: pct(safe.h, H) }),
+    band({ right: 0, top: pct(safe.y, H), width: pct(W - safe.x - safe.w, W), height: pct(safe.h, H) }, areas.right, 'side'),
     ...extra.map((e) => band({ left: pct(e.x, W), top: pct(e.y, H), width: pct(e.w, W), height: pct(e.h, H) }, e.label, 'extra')),
     h('div', { class: 'sz-safe', style: { left: pct(safe.x, W), top: pct(safe.y, H), width: pct(safe.w, W), height: pct(safe.h, H) } }, grid),
     tag({ left: '50%', top: pct(safe.y, H) }, `${margins.top} px`),
@@ -150,16 +173,18 @@ export function fitStyle(captions, style, zone, W, H) {
     const patch = {};
     // too wide, or reaching a column of buttons: narrow and centre
     const top = Math.min(...boxes.map((b) => b.top)), bottom = Math.max(...boxes.map((b) => b.bottom));
+    // centre on the safe area (it isn't always centred in the frame, e.g. YouTube Shorts)
+    const cx = safe.x + safe.w / 2;
     let room = safe.w;
     for (const e of extra) {
       if (top < e.y + e.h && bottom > e.y) {
         // keep a centred block clear of the covered area
-        room = Math.min(room, e.x > W / 2 ? 2 * (e.x - W / 2) : 2 * (W / 2 - (e.x + e.w)));
+        room = Math.min(room, e.x > cx ? 2 * (e.x - cx) : 2 * (cx - (e.x + e.w)));
       }
     }
     const widest = Math.max(...boxes.map((b) => b.right - b.left));
     if (p.some((q) => q.left > 0.5 || q.right > 0.5 || q.covered.length) || widest > room) {
-      patch.hPos = 'center'; patch.hOffset = 0; patch.align = s.align === 'left' || s.align === 'right' ? s.align : 'center';
+      patch.hPos = 'center'; patch.hOffset = Math.round(((cx - W / 2) / W) * 100 * 2) / 2; patch.align = s.align === 'left' || s.align === 'right' ? s.align : 'center';
       if (widest > room - 4) {
         const pad = 2 * edgePad(s, W, H);
         patch.width = Math.max(30, Math.min(s.width - 1, Math.floor(((room - pad - 8) / W) * 100)));

@@ -135,7 +135,7 @@ for (const [file, tpl, ext] of CASES) {
     await page.goto(BASE);
     await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
     await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
-    for (const zone of ['ig-reels', 'ig-stories', 'fb-reels', 'tiktok']) {
+    for (const zone of ['ig-reels', 'ig-stories', 'fb-reels', 'fb-stories', 'yt-shorts', 'whatsapp', 'tiktok']) {
       await page.click(`.zone-chip[data-zone="${zone}"]`);
       if (await page.locator('.guides .sz-safe').count() !== 1) throw new Error(`${zone}: no safe-area outline`);
       if (await page.locator('.zone-status button').count()) {
@@ -146,7 +146,7 @@ for (const [file, tpl, ext] of CASES) {
     await page.click('.zone-chip[data-zone="off"]');
     if (!(await page.locator('.guides').isHidden())) throw new Error('overlay still shown with Off');
     if (errors.length) throw new Error(errors.join('; '));
-    console.log('✓ safe zones: overlays for 4 platforms, and "Move inside" brings every caption into the safe area');
+    console.log('✓ safe zones: overlays for 7 platforms, and "Move inside" brings every caption into the safe area');
   } catch (e) {
     fail('safe zones', e.message.split('\n')[0]);
   } finally {
