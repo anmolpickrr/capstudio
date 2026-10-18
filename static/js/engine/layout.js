@@ -33,10 +33,16 @@ export function emphasisSet(caption, style) {
   return set;
 }
 
+// Scripts whose letters join or reorder (Indic, Arabic, Hebrew, Thai and others).
+// Letter spacing would pull their vowel signs off the consonants, and libass
+// stops shaping them when \fsp is set, so these words get no extra tracking.
+const SHAPED = /[\u0590-\u08FF\u0900-\u0DFF\u0E00-\u0EFF\u1000-\u109F\u1780-\u17FF]/;
+export const needsShaping = (text) => SHAPED.test(text);
+
 function wordSpec(caption, style, W, H) {
   const r = ref(W, H);
   const fs = style.size * r;
-  const spacing = style.letterSpacing * r;
+  const tracking = style.letterSpacing * r;
   const emph = emphasisSet(caption, style);
   // Shapes around single words need room so neighbours don't touch them.
   const boxed = style.bg === 'word' || style.highlight === 'pill' || style.emphBg;
@@ -48,8 +54,9 @@ function wordSpec(caption, style, W, H) {
     const isEmph = emph.has(i);
     const font = wordFont(isEmph && style.emphFont ? style.emphFont : style.font, text);
     const size = fs * (isEmph ? style.emphScale || 1 : 1);
+    const spacing = needsShaping(text) ? 0 : tracking;
     return {
-      i, text, font, size, emph: isEmph,
+      i, text, font, size, emph: isEmph, spacing,
       w: textWidth(text, font, size, spacing),
       space: textWidth(' ', font, size, 0) + spacing + extraGap,
       asc: size * font.ascent,

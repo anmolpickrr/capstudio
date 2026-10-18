@@ -43,7 +43,7 @@ export function buildScene(caption, styleIn, W, H, spaced = true) {
     if (style.highlight === 'pill') els.push(box('active', style.hlBgColor, 1, 2));
 
     const text = { kind: 'text', word: w.i, text: w.text, font: w.font, size: w.size, desc: w.desc, w: w.w,
-      spacing: style.letterSpacing * r, lineTopLocal: w.lineTop - w.bottom, lineBottomLocal: w.lineBottom - w.bottom };
+      spacing: w.spacing, lineTopLocal: w.lineTop - w.bottom, lineBottomLocal: w.lineBottom - w.bottom };
     if (style.shadowOpacity > 0 && (style.shadowX || style.shadowY || style.shadowBlur)) {
       els.push({ ...text, role: 'shadow', z: 3, offset: { x: style.shadowX * r, y: style.shadowY * r },
         fill: style.shadowColor, alpha: style.shadowOpacity, outline, outlineColor: style.shadowColor,

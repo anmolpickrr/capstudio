@@ -48,3 +48,13 @@ for (const tpl of TEMPLATES) {
   const t = caption.words[Math.max(0, n - 2)].start + 0.12 + (n === 1 ? 0.3 : 0);
   CASES.push({ name: `tpl-${tpl.id}`, W: 1080, H: 1920, t, caption, style: tpl.style, template: true });
 }
+
+// Every template again with Hindi: conjuncts (क्या), vowel signs before the
+// consonant (कि, चि) and nukta (ड़) must shape the same in the export.
+const HINDI = 'क्या आपको किचन चिमनी थोड़ा साफ़ करनी है'.split(' ');
+for (const tpl of TEMPLATES) {
+  const n = Math.min(tpl.style.maxWords, 4);
+  const caption = cap(HINDI.slice(0, n).join(' '), { step: 0.3 });
+  const t = caption.words[Math.max(0, n - 2)].start + 0.12 + (n === 1 ? 0.3 : 0);
+  CASES.push({ name: `hi-${tpl.id}`, W: 1080, H: 1920, t, caption, style: tpl.style, template: true });
+}

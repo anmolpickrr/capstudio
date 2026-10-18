@@ -3,6 +3,7 @@ import { fontById, families } from '../../engine/fonts.js';
 import { fontButton } from '../fontpicker.js';
 import { setStyle, state } from '../store.js';
 import { colorField, h, more, section, segmented, slider, toggle } from '../ui.js';
+import { needsShaping } from '../../engine/layout.js';
 import { stylePanel } from './base.js';
 
 function weightSelect(ctrls) {
@@ -67,6 +68,8 @@ export const textPanel = stylePanel({
       ),
       more('Spacing & punctuation',
         slider(ctrls, { label: 'Letter spacing', key: 'letterSpacing', min: -4, max: 20, step: 0.5 }),
+        state.style.letterSpacing && state.captions.some((c) => c.words.some((w) => needsShaping(w.text)))
+          ? h('p', { class: 'hint' }, 'Hindi and other Indian scripts keep their normal spacing, so their letters stay joined.') : null,
         slider(ctrls, { label: 'Line height', key: 'lineHeight', min: 0.7, max: 1.8, step: 0.05, format: (v) => `${v.toFixed(2)}×` }),
         toggle(ctrls, { label: 'Hide punctuation', key: 'punctuation', on: 'strip', off: 'keep' }),
         slider(ctrls, { label: 'Text opacity', key: 'opacity', min: 0.2, max: 1, step: 0.05, format: (v) => `${Math.round(v * 100)}%` }),
