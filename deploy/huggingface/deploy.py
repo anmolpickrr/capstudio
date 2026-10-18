@@ -50,7 +50,37 @@ def space_host(api: HfApi, space: str) -> str:
     return re.sub(r"[^a-z0-9]+", "-", space.lower()) + ".hf.space"
 
 
+def explain(err: Exception) -> str:
+    """A plain-English reason for a failed deploy (shown on the run's page)."""
+    status = getattr(getattr(err, "response", None), "status_code", None)
+    detail = str(err).splitlines()[0][:300] if str(err) else type(err).__name__
+    if status == 401:
+        return ("Hugging Face rejected the HF_TOKEN secret (it's invalid or was deleted). "
+                "Create a new token with the Write role at huggingface.co/settings/tokens "
+                "and replace the HF_TOKEN secret in GitHub.")
+    if status == 403:
+        return ("The HF_TOKEN secret doesn't have permission to create or update the Space. "
+                "Create a new token with the Write role (not Read or Fine-grained) at "
+                "huggingface.co/settings/tokens and replace the HF_TOKEN secret in GitHub. "
+                f"Details: {detail}")
+    if status == 409:
+        return f"A Space with this name already exists under another account. Details: {detail}"
+    return f"Deploy failed: {detail}"
+
+
 def main() -> int:
+    try:
+        return deploy()
+    except Exception as err:  # report clearly instead of a bare traceback
+        import traceback
+        traceback.print_exc()
+        message = explain(err)
+        print(f"::error title=Deploy to Hugging Face failed::{message}")
+        summary(f"## ❌ Not deployed\n\n{message}")
+        return 1
+
+
+def deploy() -> int:
     token = os.environ.get("HF_TOKEN")
     if not token:
         # Not set up yet: finish quietly instead of failing every push.
