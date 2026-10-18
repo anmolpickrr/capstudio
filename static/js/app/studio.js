@@ -89,22 +89,21 @@ function welcome() {
     h('div', { class: 'upload-options' }, langSel, vocab),
     startWith, file);
 
+  // two columns of floating cards around the phone, aligned in rows
   const floats = h('div', { class: 'floats', 'aria-hidden': 'true' },
-    h('div', { class: 'float f-pop' }, 'WAIT FOR IT'),
-    h('div', { class: 'float f-card f-lang' },
-      h('small', {}, 'Language'), h('b', {}, h('i', { class: 'dot' }), 'Hindi, detected')),
-    h('div', { class: 'float f-card f-timing' },
-      h('small', {}, 'Every word timed'),
+    h('div', { class: 'float left f-pop' }, 'WAIT FOR IT'),
+    h('div', { class: 'float right f-hing' }, 'kya baat hai!'),
+    h('div', { class: 'float left f-card f-timing' },
+      h('small', {}, h('i', { class: 'dot' }), 'Hindi, every word timed'),
       h('div', { class: 'f-words' }, [['आज', '0:01.2'], ['हम', '0:01.6'], ['सीखेंगे', '0:01.9']].map(([w, t]) => h('span', {}, h('b', {}, w), h('em', {}, t)))),
       h('div', { class: 'f-wave' }, Array.from({ length: 28 }, (_, i) => h('i', { style: { height: `${20 + Math.round(Math.abs(Math.sin(i * 1.7) * 70))}%` } })))),
-    h('div', { class: 'float f-card f-type' },
+    h('div', { class: 'float right f-card f-type' },
       h('small', {}, '42 styles'),
       h('div', { class: 'f-specimens' }, h('span', { class: 's1' }, 'Aa'), h('span', { class: 's2' }, 'Aa'), h('span', { class: 's3' }, 'Aa'), h('span', { class: 's4' }, 'अ'))),
-    h('div', { class: 'float f-card f-safe' },
-      h('small', {}, 'Instagram Reels'), h('b', {}, h('i', { class: 'tick' }, '✓'), 'Inside the safe zone')),
-    h('div', { class: 'float f-hing' }, 'kya baat hai!'),
-    h('div', { class: 'float f-card f-export' },
-      h('small', {}, 'Export'), h('b', {}, '1080 × 1920 · 30 fps'), h('span', {}, 'Same quality as your upload')));
+    h('div', { class: 'float left f-card f-export' },
+      h('small', {}, 'Export'), h('b', {}, '1080 × 1920 · 30 fps'), h('span', {}, 'Same quality as your upload')),
+    h('div', { class: 'float right f-card f-safe' },
+      h('small', {}, 'Instagram Reels'), h('b', {}, h('i', { class: 'tick' }, '✓'), 'Inside the safe zone')));
 
   const ticker = h('div', { class: 'ticker', 'aria-label': 'Languages' },
     h('div', { class: 'ticker-track' }, [...SCRIPTS, ...SCRIPTS].map(([t, sc], i) => h('span', { class: `sc-${sc}`, 'aria-hidden': i >= SCRIPTS.length ? 'true' : null }, t))));

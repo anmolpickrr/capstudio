@@ -25,9 +25,9 @@ function timed(text) {
 
 // The specimens: one style each, on a flat surface. `size` places the card in the bento.
 const SPECIMENS = [
-  { template: 'hormozi', surface: 'purple', size: 'big', language: 'English',
+  { template: 'hormozi', surface: 'purple', size: 'wide', language: 'English',
     text: 'Meet the new one click checkout. No forms. No waiting. Your customers pay in seconds.' },
-  { template: 'karaoke', surface: 'ink', language: 'English',
+  { template: 'karaoke', surface: 'paper', language: 'English',
     text: 'Most people watch with the sound off, so the words on screen do the talking.' },
   { template: 'desi', surface: 'maroon', language: 'Hindi',
     text: 'नमस्ते दोस्तों! आज हम सीखेंगे कि वीडियो पर कैप्शन कैसे लगाएं।' },
@@ -35,8 +35,6 @@ const SPECIMENS = [
     text: 'Yeh offer sirf aaj ke liye hai, toh jaldi order karo aur free delivery pao!' },
   { template: 'magazine', surface: 'stone', language: 'English',
     text: 'Keep each line short, keep it in sync, and make the key idea stand out.' },
-  { template: 'tiles', surface: 'paper', size: 'wide', language: 'English',
-    text: 'Every word sits on its own tile, so it reads on any footage.' },
   { template: 'neon', surface: 'night', size: 'wide', language: 'English',
     text: 'Launching tonight for every store. Free shipping on your first order.' },
 ];
@@ -189,7 +187,8 @@ function specimen(sp, grid, onPick) {
   const wide = sp.size === 'wide';
   const stage = h('span', { class: 'spec-stage' });
   // big and square cards use a square frame, wide cards a 2:1 frame
-  const textSize = wide ? 270 : sp.size === 'big' ? 150 : 230;
+  // one type size for every card, so the grid reads as a set
+  const textSize = 300;
   const { svg } = livePlayer(sp.text, tpl.id, { W: 1620, H: 1080, textSize, el: stage, fit: true });
   stage.append(svg);
   const selected = () => state.templateId === tpl.id;
