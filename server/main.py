@@ -230,7 +230,9 @@ def config():
 def health():
     # RENDER_GIT_COMMIT is set by Render: shows which version of the code is live
     version = os.environ.get("RENDER_GIT_COMMIT", "")[:7] or None
-    return {"status": "ok", "version": version, "jobs": len(jobs), **transcribe.model_status()}
+    # readable from other sites, so the github.io page can tell when the server is awake
+    return JSONResponse({"status": "ok", "version": version, "jobs": len(jobs), **transcribe.model_status()},
+                        headers={"Access-Control-Allow-Origin": "*"})
 
 
 @app.get("/api/fonts")
