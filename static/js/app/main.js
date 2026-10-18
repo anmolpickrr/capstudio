@@ -56,4 +56,20 @@ window.addEventListener('beforeunload', (e) => {
   if (state.project && state.captions.length && !state.project.exported) { e.preventDefault(); e.returnValue = ''; }
 });
 
-boot().catch((e) => toast(`Caption Studio couldn't start: ${e.message}`, 'error', 15000));
+// The address the team uses. GitHub Pages only hosts these files, without the server
+// that makes captions, so a copy opened there points people to the live site instead.
+const LIVE_SITE = 'https://caption-studio.onrender.com';
+
+function showFilesOnlyCopy() {
+  $('#view').className = 'welcome';
+  $('#view').innerHTML = `<div class="moved"><span class="drop-icon">${icon('logo')}</span>
+    <h1>Caption Studio lives at a new address</h1>
+    <p>This page only holds the app's files, so it can't make captions or export videos.</p>
+    <a class="btn brand lg" href="${LIVE_SITE}">Open Caption Studio</a>
+    <small>${LIVE_SITE.replace('https://', '')}</small></div>`;
+}
+
+boot().catch((e) => {
+  if (location.hostname.endsWith('github.io')) showFilesOnlyCopy();
+  else toast(`Caption Studio couldn't start: ${e.message}`, 'error', 15000);
+});

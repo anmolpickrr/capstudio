@@ -8,7 +8,7 @@ Configuration (environment variables / Hugging Face Space secrets):
                                           which signs everyone out on restart)
   PUBLIC_URL                              e.g. https://team-caption-panel.hf.space
                                           (defaults to the Space's own address)
-  AUTH_DISABLED=1                         local development and tests only
+  AUTH_DISABLED=1                         no sign-in (local development, tests, or an open site)
 """
 from __future__ import annotations
 

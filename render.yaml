@@ -1,6 +1,9 @@
-# Render Blueprint: Render → New → Blueprint → pick this repository.
-# Render asks for the three keys below once; SESSION_SECRET is generated for you.
-# Every push to main redeploys automatically.
+# Render Blueprint. One-click setup:
+#   https://render.com/deploy?repo=https://github.com/anmolpickrr/capstudio
+# Render asks for the Groq key once; every push to main redeploys automatically.
+# Sign-in is off (AUTH_DISABLED=1): anyone with the address can use the site.
+# To require Google sign-in, delete AUTH_DISABLED and add GOOGLE_CLIENT_ID and
+# GOOGLE_CLIENT_SECRET in the service's Environment settings.
 services:
   - type: web
     name: caption-studio
@@ -13,9 +16,7 @@ services:
     envVars:
       - key: GROQ_API_KEY
         sync: false
-      - key: GOOGLE_CLIENT_ID
-        sync: false
-      - key: GOOGLE_CLIENT_SECRET
-        sync: false
+      - key: AUTH_DISABLED
+        value: "1"
       - key: SESSION_SECRET
         generateValue: true
