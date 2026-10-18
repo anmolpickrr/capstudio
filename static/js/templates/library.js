@@ -25,34 +25,34 @@ const T = (id, name, category, note, style) => ({ id, name, category, note, styl
 export const TEMPLATES = [
   // Trending: the looks top creators use right now. A small lead-in over one big
   // keyword, mixed fonts, words that build up as they're spoken, soft glow.
-  T('two-tier', 'Two-tier', 'trending', 'Small lead-in, big lime keyword', {
-    font: 'Inter-Bold', size: 70, letterSpacing: -2, punctuation: 'strip', lineHeight: 0.84,
-    emphasis: 'auto', emphLine: true, emphScale: 3.6, emphFont: 'Inter-Black', emphColor: '#D7FF3F',
-    shadowY: 4, shadowBlur: 16, shadowOpacity: 0.55, reveal: true, wordIn: 'rise',
+  T('two-tier', 'Two-tier', 'trending', 'Lead-in framing a big lime keyword', {
+    font: 'Inter-Bold', size: 92, letterSpacing: -3, punctuation: 'strip', lineHeight: 0.94, align: 'keyword',
+    emphasis: 'auto', emphLine: true, emphScale: 2.05, emphFont: 'Inter-Black', emphColor: '#D7FF3F',
+    shadowY: 4, shadowBlur: 18, shadowOpacity: 0.5, reveal: true, wordIn: 'rise',
     maxWords: 4, maxLines: 3, width: 84, vPos: 'middle', vOffset: 10,
   }),
-  T('serif-stack', 'Serif stack', 'trending', 'Clean sans with a serif keyword, soft glow', {
-    font: 'Inter-Bold', size: 68, letterSpacing: -2.5, lineHeight: 0.8,
-    emphasis: 'auto', emphLine: true, emphScale: 3.8, emphFont: 'InstrumentSerif-Regular',
-    glow: 8, glowColor: '#FFFFFF', glowOpacity: 0.28, reveal: true, wordIn: 'blur',
-    maxWords: 5, maxLines: 3, width: 82, vPos: 'middle', vOffset: 10,
+  T('serif-stack', 'Serif stack', 'trending', 'Clean sans framing a tall serif keyword', {
+    font: 'Inter-Bold', size: 84, letterSpacing: -3, lineHeight: 0.96, align: 'keyword',
+    emphasis: 'auto', emphLine: true, emphScale: 2.5, emphFont: 'InstrumentSerif-Regular',
+    glow: 4, glowColor: '#FFFFFF', glowOpacity: 0.18, shadowY: 3, shadowBlur: 14, shadowOpacity: 0.45,
+    reveal: true, wordIn: 'blur', maxWords: 5, maxLines: 3, width: 82, vPos: 'middle', vOffset: 10,
   }),
-  T('scatter', 'Scatter', 'trending', 'Heavy lowercase, one word a line, staggered', {
-    font: 'Inter-Black', size: 170, letterSpacing: -8, textCase: 'lower', punctuation: 'strip', lineHeight: 0.84,
-    stack: true, stagger: 90, emphasis: 'auto', emphScale: 1.4,
-    shadowY: 6, shadowBlur: 20, shadowOpacity: 0.5, reveal: true, wordIn: 'pop',
+  T('scatter', 'Poster stack', 'trending', 'One heavy word a line, sizes mixed like a poster', {
+    font: 'Inter-Black', size: 128, letterSpacing: -7, textCase: 'lower', punctuation: 'strip', lineHeight: 0.98,
+    stack: true, align: 'left', emphasis: 'auto', emphScale: 1.75,
+    shadowY: 6, shadowBlur: 22, shadowOpacity: 0.45, reveal: true, wordIn: 'pop',
     maxWords: 3, maxLines: 3, width: 90, vPos: 'middle', vOffset: 0,
   }),
-  T('hook', 'Hook', 'trending', 'Bold italic caps, keyword in red', {
-    font: 'Poppins-ExtraBoldItalic', size: 160, textCase: 'upper', punctuation: 'strip', lineHeight: 0.9,
-    emphasis: 'last', emphLine: true, emphColor: '#FF2D46', emphScale: 1.1,
+  T('hook', 'Hook', 'trending', 'Bold italic caps, the punchline in red', {
+    font: 'Poppins-ExtraBoldItalic', size: 120, textCase: 'upper', punctuation: 'strip', lineHeight: 0.96, align: 'keyword',
+    emphasis: 'last', emphLine: true, emphColor: '#FF2D46', emphScale: 1.3,
     shadowY: 6, shadowBlur: 12, shadowOpacity: 0.7, animIn: 'pop',
     maxWords: 4, maxLines: 3, width: 88, vPos: 'middle', vOffset: 12,
   }),
-  T('hype', 'Hype', 'trending', 'Violet caps lead-in, huge italic keyword', {
-    font: 'Poppins-ExtraBoldItalic', size: 64, textCase: 'upper', punctuation: 'strip', color: '#B98BFF', lineHeight: 0.88,
-    emphasis: 'last', emphLine: true, emphScale: 4, emphColor: '#FFFFFF',
-    glow: 7, glowColor: '#7C3AED', glowOpacity: 0.55, shadowY: 6, shadowBlur: 10, shadowOpacity: 0.6, animIn: 'zoom',
+  T('hype', 'Hype', 'trending', 'Violet italic lead-in, wide display keyword', {
+    font: 'Poppins-ExtraBoldItalic', size: 84, textCase: 'upper', punctuation: 'strip', color: '#B98BFF', lineHeight: 0.96, align: 'keyword',
+    emphasis: 'last', emphLine: true, emphScale: 1.95, emphFont: 'Unbounded-Black', emphColor: '#FFFFFF',
+    glow: 6, glowColor: '#7C3AED', glowOpacity: 0.5, shadowY: 6, shadowBlur: 10, shadowOpacity: 0.6, animIn: 'zoom',
     maxWords: 3, maxLines: 3, width: 90, vPos: 'middle', vOffset: 12,
   }),
   T('big-word', 'Big word', 'trending', 'One word at a time; long words turn serif italic', {
@@ -66,10 +66,11 @@ export const TEMPLATES = [
     glow: 10, glowColor: '#FFFFFF', glowOpacity: 0.35, reveal: true, wordIn: 'blur',
     maxWords: 5, maxLines: 2, width: 80, vPos: 'middle', vOffset: 12,
   }),
-  T('desi-tier', 'Desi two-tier', 'trending', 'Two-tier made for Hindi and Hinglish', {
-    font: 'Baloo2-SemiBold', size: 62, lineHeight: 0.9,
-    emphasis: 'auto', emphLine: true, emphScale: 3.6, emphFont: 'Baloo2-ExtraBold', emphColor: '#FFB627',
-    shadowY: 5, shadowBlur: 14, shadowOpacity: 0.6, reveal: true, wordIn: 'rise',
+  T('desi-tier', 'Desi marker', 'trending', 'Hindi and Hinglish, keyword on a saffron marker', {
+    font: 'Mukta-Bold', size: 88, lineHeight: 1.12, align: 'keyword',
+    emphasis: 'auto', emphLine: true, emphScale: 1.8, emphFont: 'Baloo2-ExtraBold', emphColor: '#1E1300',
+    emphBg: true, emphBgColor: '#FFB627', bgRadius: 14, bgPadX: 18, bgPadY: 0,
+    shadowY: 4, shadowBlur: 14, shadowOpacity: 0.55, reveal: true, wordIn: 'rise',
     maxWords: 4, maxLines: 3, width: 86, vPos: 'middle', vOffset: 10,
   }),
 

@@ -38,7 +38,7 @@ export const textPanel = stylePanel({
         h('div', { class: 'grid2' }, weightSelect(ctrls),
           slider(ctrls, { label: 'Size', key: 'size', min: 24, max: 200, step: 1 })),
         segmented(ctrls, { label: 'Letter case', key: 'textCase', options: [['none', 'Aa'], ['upper', 'AA'], ['lower', 'aa'], ['title', 'Title']] }),
-        segmented(ctrls, { label: 'Alignment', key: 'align', options: [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']] }),
+        segmented(ctrls, { label: 'Alignment', key: 'align', options: [['left', 'Left'], ['center', 'Centre'], ['right', 'Right'], ['keyword', 'Keyword']] }),
       ),
       section('Colour',
         colorField(ctrls, { label: s.gradientTo ? 'Gradient top' : 'Text colour', key: 'color' }),

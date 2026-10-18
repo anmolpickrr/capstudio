@@ -58,7 +58,8 @@ function wordSpec(caption, style, W, H) {
   const tracking = style.letterSpacing * r;
   const emph = emphasisSet(caption, style);
   // Shapes around single words need room so neighbours don't touch them.
-  const boxed = style.bg === 'word' || style.highlight === 'pill' || style.emphBg;
+  // (a keyword on its own line has no neighbours to keep clear of)
+  const boxed = style.bg === 'word' || style.highlight === 'pill' || (style.emphBg && !style.emphLine);
   const extraGap = (!boxed ? 0 : (style.bg === 'word' ? 1.2 : 1.0) * style.bgPadX * r
     + Math.max(0, (style.hlScale || 1) - 1) * fs * 0.6)
     + style.outline * r; // thick outlines would otherwise fill the gap between words
@@ -171,12 +172,18 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
   const ranges = captionLines(words, style, maxTextWidth(style, W), spaced);
   const gap = (style.lineHeight - 1) * fs;
 
-  // vertical metrics per line
+  // vertical metrics per line. Stacked styles (a keyword on its own line, or one
+  // word per line) pack lines by the letters themselves rather than the font's
+  // full line box, which carries a lot of padding at big sizes. Indic and other
+  // shaped scripts keep more room above for their vowel signs.
+  const tight = style.emphLine || style.stack;
   let y = 0;
   const lines = ranges.map(([a, b], li) => {
     const ws = words.slice(a, b);
-    const asc = Math.max(...ws.map((w) => w.asc));
-    const desc = Math.max(...ws.map((w) => w.desc));
+    const shaped = ws.some((w) => needsShaping(w.text));
+    const ka = tight ? (shaped ? 0.9 : 0.8) : 1, kd = tight ? (shaped ? 0.7 : 0.5) : 1;
+    const asc = Math.max(...ws.map((w) => w.asc)) * ka;
+    const desc = Math.max(...ws.map((w) => w.desc)) * kd;
     const top = y;
     y += asc + desc + gap;
     let width = 0;
@@ -196,10 +203,19 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
   else if (style.vPos === 'middle') blockTop = H / 2 + (style.vOffset / 100) * H - blockH / 2;
   else blockTop = H - (style.vOffset / 100) * H - blockH;
 
+  // 'keyword' alignment: the keyword line is centred in the block, lines before
+  // it start at the keyword's left edge and lines after it end at its right edge,
+  // so a lead-in and a tail frame the keyword like a typeset title.
+  const kw = style.align === 'keyword' ? lines.find((l) => words.slice(l.a, l.b).some((w) => w.emph)) : null;
+  const kwLeft = kw ? blockLeft + (blockW - kw.width) / 2 : 0;
   for (const l of lines) {
     l.top += blockTop; l.baseline += blockTop; l.bottom += blockTop;
     let left = blockLeft;
-    if (style.align === 'center') left = blockLeft + (blockW - l.width) / 2;
+    if (kw) {
+      if (l === kw) left = kwLeft;
+      else if (l.index < kw.index) left = Math.min(kwLeft, blockLeft + blockW - l.width);
+      else left = Math.max(blockLeft, kwLeft + kw.width - l.width);
+    } else if (style.align === 'center' || style.align === 'keyword') left = blockLeft + (blockW - l.width) / 2;
     else if (style.align === 'right') left = blockLeft + blockW - l.width;
     if (style.stagger && lines.length > 1) left += (l.index % 2 ? 1 : -1) * style.stagger * r;
     l.left = left;

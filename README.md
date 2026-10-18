@@ -11,7 +11,7 @@ Upload → captions generated automatically → choose a style → customise →
 **Studio (your video)**
 - **Upload-first start.** Drop a video; captions start generating as soon as the upload finishes. You can pick the spoken language and add brand or people names beforehand.
 - **Editor** with five tool panels:
-  - **Styles:** the library of 50 styles, previewed live on a frame of your video. The **Trending** group (tagged in the library) holds the current creator looks: a small lead-in over one big keyword on its own line (Two-tier, Serif stack, Hype, Hook, Desi two-tier), one heavy word per line (Scatter), one big word at a time (Big word), and soft glow with words blurring in (Soft glow).
+  - **Styles:** the library of 50 styles, previewed live on a frame of your video. The **Trending** group (tagged in the library) holds the current creator looks: a small lead-in over one big keyword on its own line (Two-tier, Serif stack, Hype, Hook, Desi marker), with lead-ins aligned to the keyword's edges, one heavy word per line, left-aligned like a poster (Poster stack), one big word at a time (Big word), and soft glow with words blurring in (Soft glow).
   - Supporting settings: keyword on its own line, one word per line, emphasis on the last word (the punchline), a Blur-in word entrance, and keyword sizes up to 300%. A word too wide for the caption area is scaled down to fit.
   - **Text:** font, weight, size, case, alignment, colour or gradient, spacing, and keyword emphasis.
   - **Effects:** outline, shadow, glow, background shapes (per line, block or word), and spoken-word highlights (colour, pill, karaoke sweep, read-along).
