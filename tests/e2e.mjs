@@ -110,11 +110,15 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
     const log = execFileSync('sh', ['-c', `ffmpeg -ss 3 -i "${MEDIA + file}" -ss 3 -i "${out}" -lavfi "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr" -frames:v 1 -f null - 2>&1`]).toString();
     const psnr = Number((log.match(/average:([\d.]+)/) || [])[1]);
     if (!(psnr < 35)) diffs.push(`no captions in the picture (PSNR ${psnr})`);
-    // the watermark's corner marks sit in the top fifth of the frame, away from the captions
-    const top = execFileSync('sh', ['-c', `ffmpeg -ss 3 -i "${MEDIA + file}" -ss 3 -i "${out}" -lavfi "[0:v]format=rgb24,crop=iw:ih*0.2:0:ih*0.06[a];[1:v]format=rgb24,crop=iw:ih*0.2:0:ih*0.06[b];[a][b]psnr" -frames:v 1 -f null - 2>&1`]).toString();
-    const topPsnr = Number((top.match(/average:([\d.]+|inf)/) || [])[1]?.replace('inf', '99'));
-    if (watermark && !(topPsnr < 40)) diffs.push(`no watermark in the picture (PSNR ${topPsnr})`);
-    if (!watermark && !(topPsnr > 40)) diffs.push(`unexpected change above the captions (PSNR ${topPsnr})`);
+    // the watermark: frame 90 of each (the test pattern moves, so match frames by number),
+    // brightness change inside the light overlay's shape vs outside it, above the captions
+    const frame = (src, png) => execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', src, '-vf', "select='eq(n\\,90)'", '-frames:v', '1', png]);
+    frame(MEDIA + file, join(OUT, 'wm-src.png'));
+    frame(out, join(OUT, 'wm-out.png'));
+    const [inside, outside] = execFileSync('python3', [new URL('./wm_check.py', import.meta.url).pathname, join(OUT, 'wm-src.png'),
+      join(OUT, 'wm-out.png'), new URL('../static/watermarks/fastrr-light-9x16.png', import.meta.url).pathname]).toString().trim().split(' ').map(Number);
+    if (watermark && !(inside > 6 && Math.abs(outside) < 3)) diffs.push(`watermark not in the picture (inside ${inside}, outside ${outside})`);
+    if (!watermark && !(Math.abs(inside) < 3)) diffs.push(`unexpected watermark (inside ${inside})`);
     if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
     if (diffs.length) throw new Error(diffs.join(', '));
     console.log(`✓ in-browser export ${file} + ${tpl}${watermark ? ' + watermark' : ''} → ${v.width}x${v.height}, ${v.nb_read_frames} frames, ${a.codec_name} audio, ${secs.toFixed(1)}s`);
