@@ -31,7 +31,7 @@ export function upload(file, onProgress) {
       if (xhr.status !== 200) reject(new ApiError(body.detail || 'Upload failed.'));
       else resolve(body);
     };
-    xhr.onerror = () => reject(new ApiError('Upload failed — check your connection and try again.'));
+    xhr.onerror = () => reject(new ApiError('Upload failed. Check your connection and try again.'));
     xhr.onabort = () => reject(new ApiError('Upload cancelled.'));
     xhr.send(file);
   });

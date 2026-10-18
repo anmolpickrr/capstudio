@@ -115,7 +115,7 @@ export class Stage {
       h('h3', {}, h('span', { class: 'spinner' }), title),
       h('div', { class: `progress${pct > 0.02 ? '' : ' indeterminate'}` }, h('i', { style: { width: `${Math.round(pct * 100)}%` } })),
       h('p', {}, p.message || ''),
-      h('p', { class: 'hint' }, 'Tip: pick a caption style on the left while you wait.')));
+      h('p', { class: 'hint' }, 'While you wait, you can pick a style on the left.')));
   }
 
   renderGuides() {

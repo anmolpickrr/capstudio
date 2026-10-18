@@ -25,13 +25,12 @@ Upload → captions generated automatically → choose a style → customise →
   - **Subtitle track only:** the original picture is kept untouched.
   - **Caption files:** SRT, WebVTT, styled ASS, or a plain transcript.
 
-  Exports show progress, can be cancelled, and leave no partial files behind.
+  Exports keep the original file name (only the extension changes if the format does, e.g. WebM to MP4). They show progress, can be cancelled, and leave no partial files behind.
 
-**Demo**
-- Three example videos: an English reel, a Hindi explainer and a UK-English square video.
-- Their captions were prepared for the demo and are labelled as such.
-- Switch styles instantly or compare four side by side.
-- "Customise this example" opens it in the Studio as a separate, clearly labelled example project.
+**First page**
+- Six short looping clips, each playing a different style live (English, Hindi and Hinglish), drawn by the same engine as the editor.
+- Clicking one makes it the starting style for the next upload.
+- The clips are built by `scripts/build_showcase.py` into `static/showcase/`.
 
 **Languages**
 - Auto-detect.
@@ -127,7 +126,7 @@ Other rules:
 
 See `tests/README.md`:
 - **Python tests:** API, sign-in, engines, retention, deploy script.
-- **Browser end-to-end test:** five source formats, undo, Demo.
+- **Browser end-to-end test:** five source formats (including file names), the first-page style showcase, undo.
 - **Preview-vs-export pixel comparison:** every template.
 
 ## Layout
@@ -136,8 +135,8 @@ See `tests/README.md`:
 server/            FastAPI app: jobs, retention, transcription engines, sign-in, ffmpeg
 static/js/engine/  caption engine: fonts, measurement, layout, motion, scene, SVG preview, ASS export
 static/js/templates/  default settings and the 42-style library
-static/js/app/     the interface: studio, stage, timeline, panels, export, demo
-static/demo/       example videos with prepared captions (scripts/build_demo.py)
+static/js/app/     the interface: first page and showcase, studio, stage, timeline, panels, export
+static/showcase/   clips for the first-page style showcase (scripts/build_showcase.py)
 fonts/             caption fonts (scripts/fetch_fonts.py)
 deploy/render/     Render image (render.yaml at the root)
 deploy/huggingface/  Space image and deploy script

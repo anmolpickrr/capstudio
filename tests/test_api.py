@@ -1,8 +1,9 @@
-"""API behaviour: upload, waveform, export cancel/cleanup, and demo projects."""
+"""API behaviour: upload, waveform, export cancel/cleanup, and export file names."""
 import os
 import pathlib
 import subprocess
 import time
+import urllib.parse
 
 import pytest
 from fastapi.testclient import TestClient
@@ -82,14 +83,39 @@ def test_config_flags_unsupported_languages(client):
     assert any(lang["id"] == "hinglish-roman" for lang in langs)
 
 
-@pytest.mark.skipif(not (main.DEMO_DIR / "index.json").exists(), reason="demo assets not built")
-def test_demo_projects(client):
-    demos = client.get("/api/demo").json()
-    assert len(demos) >= 3 and all(d["info"]["duration"] > 5 for d in demos)
-    r = client.post(f"/api/demo/{demos[0]['id']}/project").json()
-    assert r["transcript"]["prepared"] is True and r["transcript"]["words"]
-    assert (main.DATA_DIR / r["id"] / "source.mp4").exists()
-    assert client.post("/api/demo/nope/project").status_code == 404
+@pytest.mark.parametrize("original, ext, expected", [
+    ("Diwali sale reel (final).mp4", ".mp4", "Diwali sale reel (final).mp4"),
+    ("Interview.MOV", ".mov", "Interview.MOV"),
+    ("clip.webm", ".mp4", "clip.mp4"),
+    ("बिक्री वीडियो.mp4", ".mp4", "बिक्री वीडियो.mp4"),
+])
+def test_exports_keep_the_original_name(original, ext, expected):
+    assert main.export_name(main.clean_name(original), ext) == expected
+
+
+def test_upload_name_is_cleaned_not_replaced():
+    assert main.clean_name("C:\\Users\\me\\My: reel?.mp4") == "My reel.mp4"
+    assert main.clean_name("../../etc/passwd") == "passwd"
+    assert main.clean_name("") == "video.mp4"
+
+
+def test_downloaded_export_has_the_original_name(client, video):
+    r = client.post("/api/jobs", content=video.read_bytes(),
+                    headers={"X-Filename": urllib.parse.quote("Summer launch (v2).mp4")})
+    job = r.json()
+    assert job["name"] == "Summer launch (v2).mp4"
+    srt = "1\n00:00:00,000 --> 00:00:02,000\nHello\n"
+    client.post(f"/api/jobs/{job['id']}/render", json={"mode": "soft", "srt": srt})
+    for _ in range(100):
+        state = client.get(f"/api/jobs/{job['id']}").json()["render"]
+        if state["status"] in ("done", "error"):
+            break
+        time.sleep(0.1)
+    assert state["status"] == "done" and state["file"] == "Summer launch (v2).mp4"
+    d = client.get(f"/api/jobs/{job['id']}/download")
+    assert "Summer%20launch%20%28v2%29.mp4" in d.headers["content-disposition"] or \
+        'filename="Summer launch (v2).mp4"' in d.headers["content-disposition"]
+    client.delete(f"/api/jobs/{job['id']}")
 
 
 def test_session_cookie_secure_on_spaces():

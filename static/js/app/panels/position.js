@@ -64,7 +64,7 @@ export const positionPanel = stylePanel({
         positionGrid(ctrls),
         slider(ctrls, { label: s.vPos === 'middle' ? 'Move up / down' : `Distance from ${s.vPos}`, key: 'vOffset', min: s.vPos === 'middle' ? -45 : 0, max: 48, step: 0.5, format: (v) => `${v}%` }),
         slider(ctrls, { label: s.hPos === 'center' ? 'Move left / right' : `Distance from ${s.hPos}`, key: 'hOffset', min: s.hPos === 'center' ? -40 : 0, max: 40, step: 0.5, format: (v) => `${v}%` }),
-        h('p', { class: 'hint' }, 'Tip: drag the caption in the preview. Turn on safe-area guides under the video to keep clear of app buttons.')),
+        h('p', { class: 'hint' }, 'You can also drag the caption in the preview. The safe-area guides under the video show where app buttons sit.')),
       section('Size of each caption',
         slider(ctrls, { label: 'Max width', key: 'width', min: 30, max: 96, step: 1, format: (v) => `${v}%` }),
         lengthSlider(ctrls, { label: 'Max words per caption', key: 'maxWords', min: 1, max: 14 }),

@@ -27,7 +27,7 @@ export const motionPanel = stylePanel({
     const s = state.style;
     const wordAnim = s.reveal || s.cascade;
     return [
-      h('button', { class: 'btn', type: 'button', html: `${icon('replay')}<span>Preview the current caption</span>`, onclick: replay }),
+      h('button', { class: 'btn', type: 'button', html: '<span>Play this caption again</span>', onclick: replay }),
       section('Caption entrance', presetGrid(ctrls, 'animIn', CAPTION_IN)),
       section('Caption exit', presetGrid(ctrls, 'animOut', CAPTION_OUT)),
       section('Word by word',

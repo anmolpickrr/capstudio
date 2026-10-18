@@ -43,21 +43,20 @@ export function openExport() {
     h('input', { type: 'radio', name: 'export-kind', value, checked: checked ? true : null, disabled: disabled ? true : null }),
     h('div', { style: { display: 'grid', gap: '8px' } }, h('div', {}, h('b', {}, title), h('span', {}, desc)), extra));
   const files = h('div', { class: 'files' }, [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS (styled)'], ['txt', 'Transcript']]
-    .map(([k, t]) => h('button', { class: 'btn sm', type: 'button', html: `${icon('file')}<span>${t}</span>`, onclick: () => captionFile(k) })));
+    .map(([k, t]) => h('button', { class: 'btn sm', type: 'button', html: `<span>${t}</span>`, onclick: () => captionFile(k) })));
   const status = h('div', { id: 'export-status' });
-  const go = h('button', { class: 'btn brand lg', type: 'button', html: `${icon('export')}<span>Export video</span>`, onclick: () => start() });
+  const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Export video</span>', onclick: () => start() });
   const r = state.config.retention;
 
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Export'), h('p', {}, 'Same resolution, frame rate and audio as your original.')),
+      h('div', {}, h('h2', {}, 'Export'), h('p', {}, 'Same resolution, frame rate, audio and file name as your original.')),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'modal-body' },
       h('div', { class: 'specs' },
         h('span', {}, `${info.width}×${info.height}`), h('span', {}, info.fps ? `${+info.fps.toFixed(3)} fps` : 'Variable frame rate'),
         h('span', {}, codecName(info.vcodec) + (info.pixFmt?.includes('10') ? ' 10-bit' : '')), h('span', {}, fmtDur(info.duration))),
-      state.project.kind === 'demo' ? h('p', { class: 'note info' }, 'This is an example project — the export uses the demo video.') : null,
-      cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'This site runs on a small free server, so drawing captions in takes a while — roughly 3–6 minutes for a 30-second reel. Keep this tab open.') : null,
+      cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'Drawing the captions in takes a few minutes on this server, about 3 to 6 minutes for a 30-second reel. Keep this tab open while it runs.') : null,
       canBurn ? null : h('p', { class: 'note' }, `This server can draw captions into videos up to 1080p, and this one is ${info.width}×${info.height}. You can still add a subtitle track or download caption files.`),
       opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
         canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
@@ -96,7 +95,7 @@ export function openExport() {
         bar.style.width = `${Math.round(rr.progress * 100)}%`;
         if (rr.status === 'cancelled' || cancelled) { msg.textContent = 'Export cancelled.'; break; }
         if (rr.status === 'error') throw new Error(rr.error || 'Export failed.');
-        if (rr.status === 'queued') msg.textContent = rr.ahead > 0 ? `Waiting in line — ${rr.ahead} export${rr.ahead > 1 ? 's' : ''} ahead` : 'Starting…';
+        if (rr.status === 'queued') msg.textContent = rr.ahead > 0 ? `${rr.ahead} export${rr.ahead > 1 ? 's' : ''} ahead of yours` : 'Starting…';
         if (rr.status === 'running') {
           const eta = rr.elapsed && rr.progress > 0.05 ? Math.max(1, Math.round(rr.elapsed / rr.progress - rr.elapsed)) : null;
           msg.textContent = `${Math.round(rr.progress * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
@@ -114,11 +113,11 @@ export function openExport() {
 
   function showDone(rr) {
     const a = h('a', { class: 'btn brand', href: `/api/jobs/${state.project.job}/download`, download: rr.file,
-      html: `${icon('download')}<span>Download</span>`,
+      html: '<span>Download</span>',
       onclick: () => { state.project.exported = true; emit('project'); } });
     status.replaceChildren(h('div', { class: 'result ok' },
       h('div', { class: 'result-row' }, h('div', {}, h('b', {}, 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a)));
-    if (!dlg.open) toast('Your export is ready — open Export to download it.', 'ok', 8000);
+    if (!dlg.open) toast('Your video is ready. Open Export to download it.', 'ok', 8000);
   }
 }
 

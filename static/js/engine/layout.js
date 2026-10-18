@@ -14,7 +14,7 @@ const STOP = new Set(('a an the and or but if of to in on at for with by from as
 const ref = (W, H) => Math.min(W, H) / 1080;
 
 // Words to emphasise: the editor's marks, else (in auto mode) the most
-// meaningful word of the caption — numbers and money first, then the longest
+// meaningful word of the caption: numbers and money first, then the longest
 // non-filler word.
 export function emphasisSet(caption, style) {
   const set = new Set();

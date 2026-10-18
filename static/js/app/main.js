@@ -1,24 +1,20 @@
-// App entry: loads configuration, fonts and the signed-in user, then routes
-// between the Studio (your video) and the Demo (example videos).
+// App entry: loads configuration, fonts and the signed-in user, then shows the Studio.
 import { setCatalogue } from '../engine/fonts.js';
 import { api } from './api.js';
-import { icon } from './icons.js';
 import { leaveProject } from './session.js';
 import { set, state } from './store.js';
 import { renderStudio } from './studio.js';
-import { $, $$, toast } from './ui.js';
+import { $, toast } from './ui.js';
 
 async function boot() {
-  $('#brand-mark').innerHTML = icon('logo');
   const [config, fonts, me] = await Promise.all([api('/api/config'), api('/api/fonts'), api('/api/me').catch(() => null)]);
   setCatalogue(fonts, '/fonts/');
   set({ config, user: me });
   showUser(me);
   const r = config.retention;
   const chip = $('#privacy-chip');
-  chip.innerHTML = `${icon('lock')}<span>Files auto-delete · nothing stored</span>`;
+  chip.textContent = 'Your files are deleted after you download';
   chip.title = `Videos and captions are deleted ${r.downloadGraceMin} min after download, or ${Math.round(r.jobTtlMin / 6) / 10} h after your last activity.`;
-  window.addEventListener('hashchange', route);
   route();
 }
 
@@ -32,23 +28,12 @@ function showUser(me) {
   else av.textContent = (me.name || me.email).trim()[0].toUpperCase();
 }
 
-let demoModule = null;
-async function route() {
-  const [, name = 'studio', arg] = location.hash.match(/^#\/?([\w-]+)?\/?([\w-]+)?/) || [];
-  const routeName = name === 'demo' ? 'demo' : 'studio';
-  $$('.nav a').forEach((a) => a.setAttribute('aria-current', a.dataset.route === routeName ? 'page' : 'false'));
+function route() {
+  // One page: the Studio. Old links (e.g. #/demo) land here too.
   const view = $('#view');
-  if (routeName === 'demo') {
-    // Opening the demo never touches the user's own project.
-    demoModule ||= await import('./demo.js');
-    view.className = 'demo';
-    demoModule.renderDemo(view, arg);
-  } else {
-    demoModule?.stopDemo?.();
-    view.className = 'studio';
-    renderStudio(view);
-  }
-  set({ route: routeName }, 'route');
+  view.className = 'studio';
+  renderStudio(view);
+  set({ route: 'studio' }, 'route');
 }
 
 window.addEventListener('pagehide', () => { if (state.project?.kind) leaveProject({ beacon: true }); });
@@ -62,7 +47,7 @@ const LIVE_SITE = 'https://caption-studio-ujgd.onrender.com';
 
 function showFilesOnlyCopy() {
   $('#view').className = 'welcome';
-  $('#view').innerHTML = `<div class="moved"><span class="drop-icon">${icon('logo')}</span>
+  $('#view').innerHTML = `<div class="moved">
     <h1>Caption Studio lives at a new address</h1>
     <p>This page only holds the app's files, so it can't make captions or export videos.</p>
     <a class="btn brand lg" href="${LIVE_SITE}">Open Caption Studio</a>

@@ -133,7 +133,7 @@ export class Timeline {
       if (c.id === state.selected) {
         c.words.forEach((w, i) => {
           if (i === 0) return;
-          const tick = h('span', { class: 'tl-word', style: { left: `${this.x(w.start) - this.x(c.start)}px` }, title: `“${w.text}” starts here — drag to adjust` });
+          const tick = h('span', { class: 'tl-word', style: { left: `${this.x(w.start) - this.x(c.start)}px` }, title: `Drag to change when “${w.text}” starts` });
           tick.addEventListener('pointerdown', (e) => { e.stopPropagation(); this.dragWord(e, idx, i); });
           el.append(tick);
         });

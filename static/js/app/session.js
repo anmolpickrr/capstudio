@@ -1,6 +1,4 @@
 // A project's life: upload → automatic caption generation → editing → export.
-// Demo projects follow the same path but start from an example video with
-// prepared captions, and are always labelled as examples.
 import { chunkWords, flattenWords } from '../engine/chunk.js';
 import { ensureFonts } from '../engine/fonts.js';
 import { CaptionEngine } from '../engine/index.js';
@@ -94,7 +92,7 @@ export async function generate(id = ++runId, { language = state.language, vocabu
       t = j.transcription;
       state.progress.transcribe = t.progress;
       if (t.status === 'queued') {
-        state.progress.message = t.ahead > 0 ? `Waiting in line — ${t.ahead} video${t.ahead > 1 ? 's' : ''} ahead of yours` : 'Starting…';
+        state.progress.message = t.ahead > 0 ? `${t.ahead} video${t.ahead > 1 ? 's' : ''} ahead of yours` : 'Starting…';
       } else if (t.status === 'running') {
         const eta = t.elapsed && t.progress > 0.15 ? Math.max(1, Math.round(t.elapsed / t.progress - t.elapsed)) : null;
         state.progress.message = t.progress < 0.05 ? 'Preparing the audio…'
@@ -124,30 +122,10 @@ async function applyTranscript(tr) {
   set({ transcript: tr, captions, phase: 'editing', selected: null }, 'project');
   clearHistory();
   emit('captions');
-  const conf = tr.languageProbability ? ` (${Math.round(tr.languageProbability * 100)}% sure)` : '';
-  toast(`${tr.requested === 'auto' ? 'Detected' : 'Language'}: ${describeLang(tr.language)}${conf} · ${tr.words.length} words`, 'ok');
+  const lang = describeLang(tr.language);
+  toast(`Captions ready: ${tr.words.length} words in ${lang}${tr.requested === 'auto' ? ' (detected automatically)' : ''}`, 'ok');
   if (tr.fallback) {
     toast('The fast caption service was busy, so the backup engine wrote these captions. Please check them carefully.', 'info', 9000);
-  }
-}
-
-export async function openDemoProject(demo) {
-  await leaveProject();
-  const id = ++runId;
-  firstStyle();
-  set({ project: { kind: 'demo', demoId: demo.id, name: demo.title, src: demo.video, info: demo.info, job: null },
-    phase: 'uploading', captions: [], transcript: null, selected: null,
-    progress: { upload: 1, transcribe: 0, message: 'Opening the example…' } }, 'project');
-  clearHistory();
-  try {
-    const job = await api(`/api/demo/${demo.id}/project`, { method: 'POST' });
-    if (id !== runId) return;
-    state.project.job = job.id;
-    state.project.info = job.info;
-    await applyTranscript({ ...job.transcript, requested: job.transcript.language });
-  } catch (e) {
-    set({ phase: 'editing' }, 'project');
-    toast(e.message, 'error');
   }
 }
 

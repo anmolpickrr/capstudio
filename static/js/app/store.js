@@ -6,7 +6,7 @@ export const state = {
   config: null,
   user: null,
   route: 'studio',
-  project: null,        // { kind: 'upload'|'demo', job, info, name, file?, src, demoId? }
+  project: null,        // { kind: 'upload', job, info, name, file?, src }
   phase: 'empty',       // empty | uploading | generating | editing
   progress: { upload: 0, transcribe: 0, message: '' },
   transcript: null,     // { language, requested, spaced, engine, fallback, words }

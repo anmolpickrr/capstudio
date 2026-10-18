@@ -1,4 +1,4 @@
-// The Studio: an upload-first welcome screen, then the editor (tools on the
+// The Studio: the first page (upload and a showcase of looks), then the editor (tools on the
 // left, the video in the middle, the timeline below).
 import { icon } from './icons.js';
 import { openExport } from './export.js';
@@ -9,6 +9,8 @@ import { engine, leaveProject, startUpload, syncEngine } from './session.js';
 import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
 import { Timeline } from './timeline.js';
+import { showcase, stopShowcase } from './showcase.js';
+import { templateById } from '../templates/library.js';
 import { $, h, toast } from './ui.js';
 
 let view = null;
@@ -28,6 +30,7 @@ function layout() {
   const want = state.project ? 'editor' : 'welcome';
   if (want === mounted) return;
   mounted = want;
+  stopShowcase();
   stage?.destroy(); timeline?.destroy();
   stage = timeline = null;
   view.replaceChildren(want === 'editor' ? editor() : welcome());
@@ -51,43 +54,50 @@ function welcome() {
   const langs = state.config.languages;
   const groups = {};
   for (const l of langs) (groups[l.group] ||= []).push(l);
-  const langSel = h('select', { class: 'select', id: 'pre-language', 'aria-label': 'Spoken language' },
+  const langSel = h('select', { class: 'select', id: 'pre-language', 'aria-label': 'Language spoken in the video' },
     Object.entries(groups).map(([g, ls]) => h('optgroup', { label: g },
       ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
   langSel.value = state.language;
   langSel.addEventListener('change', () => set({ language: langSel.value }));
-  const vocab = h('input', { class: 'input', id: 'pre-vocab', placeholder: 'Brand or people names (optional)', value: state.vocabulary });
+  const vocab = h('input', { class: 'input', id: 'pre-vocab', placeholder: 'For example, Shiprocket', value: state.vocabulary });
   vocab.addEventListener('input', () => set({ vocabulary: vocab.value }));
 
+  const maxGB = Math.round(state.config.maxUploadMB / 1024 * 10) / 10;
   const file = h('input', { type: 'file', accept: 'video/*,.mov,.mkv,.mxf', hidden: true, id: 'file-input' });
   file.addEventListener('change', () => file.files[0] && startUpload(file.files[0]));
+  const startWith = h('p', { class: 'start-with' });
+  const showStart = () => {
+    const tpl = state.templateId && templateById(state.templateId);
+    startWith.textContent = tpl ? `Starting style: ${tpl.name}` : '';
+  };
+  showStart();
   const drop = h('div', { class: 'drop', role: 'button', tabindex: 0, 'aria-label': 'Upload a video',
-    onclick: (e) => { if (!e.target.closest('select,input')) file.click(); },
-    onkeydown: (e) => { if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); file.click(); } } },
-  h('div', { class: 'drop-icon', html: icon('upload') }),
-  h('h2', {}, 'Drop your video here'),
-  h('p', {}, 'or click to choose a file · up to ', `${Math.round(state.config.maxUploadMB / 1024 * 10) / 10} GB`),
-  h('button', { class: 'btn brand lg', type: 'button', html: `${icon('upload')}<span>Upload video</span>` }),
-  h('div', { class: 'formats' }, ['MP4', 'MOV', 'MKV', 'WebM', 'ProRes', 'HEVC', '4K'].map((f) => h('span', {}, f))),
+    onclick: (e) => { if (!e.target.closest('select,input,label')) file.click(); },
+    onkeydown: (e) => { if (e.target === drop && (e.key === 'Enter' || e.key === ' ')) { e.preventDefault(); file.click(); } } },
+  h('h2', {}, 'Upload a video'),
+  h('p', {}, `Drag it here or choose a file. MP4, MOV, MKV or WebM, up to ${maxGB >= 1 ? `${maxGB} GB` : `${state.config.maxUploadMB} MB`}.`),
+  h('button', { class: 'btn brand lg', type: 'button' }, 'Choose a video'),
+  startWith,
   h('div', { class: 'pre-options', onclick: (e) => e.stopPropagation() },
-    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Spoken language'), langSel),
-    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Names & terms'), vocab)),
+    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Language in the video'), langSel),
+    h('label', { class: 'field' }, h('span', { class: 'label' }, 'Names to spell right'), vocab)),
   file);
   for (const ev of ['dragenter', 'dragover']) drop.addEventListener(ev, (e) => { e.preventDefault(); drop.classList.add('over'); });
   for (const ev of ['dragleave', 'drop']) drop.addEventListener(ev, () => drop.classList.remove('over'));
   drop.addEventListener('drop', (e) => { e.preventDefault(); const f = e.dataTransfer.files[0]; if (f) startUpload(f); });
 
   return h('div', { class: 'welcome' }, h('div', { class: 'welcome-inner' },
-    h('div', {},
-      h('h1', { html: 'Captions that look <span class="grad">designed</span>, in minutes.' }),
-      h('p', { class: 'lede' }, 'Upload a finished video. Captions are written automatically and synced word by word — then pick a style, fine-tune it, and export at the original quality.'),
-      h('ol', { class: 'steps' },
-        h('li', {}, h('span', { class: 'n' }, '1'), h('div', {}, h('b', {}, 'Upload your video'), h('span', {}, 'Any size or shape — reels, landscape, 4K.'))),
-        h('li', {}, h('span', { class: 'n' }, '2'), h('div', {}, h('b', {}, 'Captions are generated automatically'), h('span', {}, 'Indian languages, Hinglish, UK & US English and more.'))),
-        h('li', {}, h('span', { class: 'n' }, '3'), h('div', {}, h('b', {}, 'Choose a style, adjust, export'), h('span', {}, 'Live preview — what you see is what you download.')))),
-    ),
-    h('div', {}, drop, h('div', { class: 'demo-link', html: `No video handy? <a href="#/demo">Explore the demo</a>` })),
-  ));
+    h('section', { class: 'hero' },
+      h('div', { class: 'hero-copy' },
+        h('h1', {}, 'Captions for your videos, ready in minutes'),
+        h('p', { class: 'lede' }, 'Upload a video and the captions are written for you, timed to every word. Pick a style, change anything you like, and download the video at the same quality you uploaded.'),
+        h('p', { class: 'langs' }, 'Works with Hindi, Hinglish and English, plus Tamil, Telugu, Bengali, Marathi and other Indian languages.')),
+      drop),
+    h('section', { class: 'looks' },
+      h('div', { class: 'looks-head' },
+        h('h2', {}, 'Pick a style to start with'),
+        h('p', {}, 'It’s applied as soon as your captions are ready. The editor has 42 styles, and you can change every detail.')),
+      showcase(showStart))));
 }
 
 // ---------------------------------------------------------------- editor
@@ -112,13 +122,12 @@ function editor() {
   const bar = h('div', { class: 'projectbar' },
     h('div', { class: 'file-chip' }, h('span', { class: 'thumb', id: 'file-thumb' }),
       h('div', {}, h('b', { id: 'file-name' }), h('small', { id: 'file-specs' }))),
-    h('span', { class: 'tag', id: 'demo-tag', hidden: true }, 'Example'),
     h('div', { class: 'flow', id: 'flow' }),
     h('div', { class: 'bar-actions' },
       h('button', { class: 'btn ghost icon-only', id: 'undo', 'data-tip': 'Undo (Ctrl+Z)', 'data-tip-pos': 'below', html: icon('undo'), onclick: () => undo() }),
       h('button', { class: 'btn ghost icon-only', id: 'redo', 'data-tip': 'Redo (Ctrl+Shift+Z)', 'data-tip-pos': 'below', html: icon('redo'), onclick: () => redo() }),
-      h('button', { class: 'btn', id: 'new-video', html: `${icon('upload')}<span>New video</span>`, onclick: newVideo }),
-      h('button', { class: 'btn primary', id: 'export-btn', html: `${icon('export')}<span>Export</span>`, onclick: openExport })));
+      h('button', { class: 'btn', id: 'new-video', html: '<span>New video</span>', onclick: newVideo }),
+      h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
 
   const panel = h('aside', { class: 'panel', id: 'panel', role: 'tabpanel' });
   const stageWrap = h('section', { class: 'stage-wrap', 'aria-label': 'Preview' });
@@ -147,7 +156,6 @@ function refreshEditor(what) {
   $('#file-specs').textContent = info
     ? `${info.width}×${info.height} · ${info.fps ? `${+info.fps.toFixed(2)} fps` : 'VFR'} · ${fmtDur(info.duration)}`
     : 'Uploading…';
-  $('#demo-tag').hidden = p.kind !== 'demo';
   $('#undo').disabled = !canUndo();
   $('#redo').disabled = !canRedo();
   $('#export-btn').disabled = !(state.phase === 'editing' && state.captions.length && p.job);

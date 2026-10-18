@@ -45,7 +45,7 @@ def test_deploy_creates_space_sets_secrets_and_uploads(monkeypatch, tmp_path):
     assert {"Dockerfile", "README.md", "requirements.txt", "server/main.py", "static/index.html",
             "static/login.html", "scripts/fetch_fonts.py"} <= api.uploaded
     assert "fonts/families.json" in api.uploaded and any(p.endswith(".ttf") for p in api.uploaded)
-    assert "static/demo/index.json" in api.uploaded
+    assert "static/showcase/showcase.json" in api.uploaded
     text = summary.read_text()
     assert "https://anmolpickrr-caption-panel.hf.space/auth/callback" in text
     assert "GOOGLE_CLIENT_ID" in text  # reported as still missing

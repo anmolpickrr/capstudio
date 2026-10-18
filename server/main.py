@@ -86,7 +86,6 @@ class Job:
     lock: threading.Lock = field(default_factory=threading.Lock)
     proc: object = None          # running ffmpeg export, so it can be cancelled
     cancel_requested: bool = False
-    demo: str | None = None
 
     def public(self) -> dict:
         return {
@@ -240,14 +239,28 @@ def fonts():
 # -------------------------------------------------------------------- jobs
 
 SAFE_NAME = re.compile(r"[^\w.\- ]+", re.UNICODE)
+UNSAFE_IN_NAME = re.compile(r'[\x00-\x1f\x7f/\\:*?"<>|]')
+
+
+def clean_name(filename: str) -> str:
+    """The uploaded file's own name, minus anything that can't be in a file name."""
+    base = re.split(r"[/\\]", filename)[-1]
+    name = UNSAFE_IN_NAME.sub("", base).strip(" .")[:200]
+    return name if pathlib.Path(name).stem else "video.mp4"
+
+
+def export_name(original: str, ext: str) -> str:
+    """Exports keep the original name; the extension changes only with the format."""
+    path = pathlib.Path(original)
+    return original if path.suffix.lower() == ext.lower() else f"{path.stem}{ext}"
 
 
 @app.post("/api/jobs")
 async def create_job(request: Request):
     # The name travels in a header, not the URL, so access logs never record it.
     filename = urllib.parse.unquote(request.headers.get("x-filename", "")) or "video.mp4"
-    name = SAFE_NAME.sub("_", pathlib.Path(filename).name)[:120] or "video.mp4"
-    ext = pathlib.Path(name).suffix.lower() or ".mp4"
+    name = clean_name(filename)
+    ext = SAFE_NAME.sub("_", pathlib.Path(name).suffix.lower())[:10] or ".mp4"
     job_id = uuid.uuid4().hex
     jdir = DATA_DIR / job_id
     uploading.add(job_id)
@@ -277,47 +290,6 @@ async def create_job(request: Request):
         jobs[job_id] = job
     log.info("job %s created (%.1f MB, %sx%s)", job_id, size / 1e6, info["width"], info["height"])
     return job.public()
-
-
-DEMO_DIR = ROOT / "static" / "demo"
-
-
-def _demo_ids() -> list[str]:
-    index = DEMO_DIR / "index.json"
-    return json.loads(index.read_text()) if index.exists() else []
-
-
-@app.get("/api/demo")
-def demo_list():
-    """Example projects for the Demo section (prepared captions, clearly labelled)."""
-    out = []
-    for demo_id in _demo_ids():
-        meta = json.loads((DEMO_DIR / demo_id / "meta.json").read_text())
-        meta.update({"video": f"/demo/{demo_id}/video.mp4", "poster": f"/demo/{demo_id}/poster.jpg",
-                     "captions": f"/demo/{demo_id}/captions.json"})
-        out.append(meta)
-    return out
-
-
-@app.post("/api/demo/{demo_id}/project")
-def demo_project(demo_id: str, request: Request):
-    """Opens an example as a temporary project, so the full editor and export work on it."""
-    if demo_id not in _demo_ids():
-        raise HTTPException(404, "That example doesn't exist.")
-    src_dir = DEMO_DIR / demo_id
-    job_id = uuid.uuid4().hex
-    jdir = DATA_DIR / job_id
-    jdir.mkdir(parents=True)
-    src = jdir / "source.mp4"
-    shutil.copyfile(src_dir / "video.mp4", src)
-    meta = json.loads((src_dir / "meta.json").read_text())
-    user = auth.current_user(request)
-    job = Job(id=job_id, dir=jdir, name=f"{meta['title']}.mp4", source=src, info=meta["info"],
-              owner=user["email"] if user else "", demo=demo_id)
-    with jobs_lock:
-        jobs[job_id] = job
-    transcript = json.loads((src_dir / "captions.json").read_text())
-    return {**job.public(), "transcript": transcript}
 
 
 @app.get("/api/jobs/{job_id}")
@@ -464,7 +436,6 @@ def _run_render(job: Job, req: RenderReq) -> None:
         task.status = "cancelled"
         return
     task.status, task.started = "running", time.time()
-    stem = pathlib.Path(job.name).stem
     src_ext = job.source.suffix
     try:
         if job.output:
@@ -479,15 +450,15 @@ def _run_render(job: Job, req: RenderReq) -> None:
                 job.touched = time.time()
 
             media.burn(str(job.source), "captions.ass", str(out), job.info, venc, str(job.dir),
-                       progress, on_start=lambda p: setattr(job, "proc", p))
-            job.output_name = f"{stem}_captioned{ext}"
+                       progress, on_start=lambda p: _export_started(job, p))
+            job.output_name = export_name(job.name, ext)
         else:
             (job.dir / "captions.srt").write_text(req.srt, encoding="utf-8")
             ext = src_ext.lower() if src_ext.lower() in (".mov", ".mkv") else ".mp4"
             out = job.dir / f"output{ext}"
             media.mux_soft(str(job.source), str(job.dir / "captions.srt"), str(out), job.info,
                            ISO3.get(req.language.split("-")[0], "und"))
-            job.output_name = f"{stem}_subtitled{ext}"
+            job.output_name = export_name(job.name, ext)
         job.output = out
         task.progress, task.status = 1.0, "done"
     except media.Cancelled:
@@ -500,6 +471,12 @@ def _run_render(job: Job, req: RenderReq) -> None:
     finally:
         job.proc = None
         task.finished = time.time()
+
+
+def _export_started(job: Job, proc) -> None:
+    job.proc = proc
+    if job.cancel_requested:  # cancelled just before ffmpeg started
+        proc.terminate()
 
 
 def _discard_output(job: Job) -> None:

@@ -24,8 +24,7 @@ function languageSection() {
   sel.addEventListener('change', () => set({ language: sel.value }));
   const vocab = h('input', { class: 'input', placeholder: 'Brand or people names, comma-separated', value: state.vocabulary });
   vocab.addEventListener('input', () => set({ vocabulary: vocab.value }));
-  const demo = state.project?.kind === 'demo';
-  const regen = h('button', { class: 'btn', type: 'button', disabled: demo || !state.project?.job ? true : null, html: `${icon('wand')}<span>Generate again</span>`,
+  const regen = h('button', { class: 'btn', type: 'button', disabled: !state.project?.job ? true : null, html: `<span>Generate again</span>`,
     onclick: async () => {
       if (state.captions.length && !window.confirm('Generate captions again? Your caption edits will be replaced (styles are kept).')) return;
       await generate(undefined, { language: sel.value, vocabulary: vocab.value });
@@ -34,7 +33,6 @@ function languageSection() {
     ? `${langLabel(tr.language)}${tr.requested === 'auto' ? ' · detected automatically' : ''}${tr.engine === 'local' && tr.fallback ? ' · backup engine' : ''}`
     : 'Not generated yet';
   return section('Language',
-    demo ? h('p', { class: 'note info' }, 'Example project: these captions were prepared for the demo, not generated from this video. Upload your own video to generate captions.') : null,
     h('div', { class: 'row-label' }, h('span', {}, summary)),
     more('Change language or improve accuracy',
       h('label', { class: 'field' }, h('span', { class: 'label' }, 'Spoken language'), sel),
@@ -84,7 +82,7 @@ function captionCard(c, i) {
   const onTime = () => {
     const s = parseTime(start.value), e = parseTime(end.value);
     if (Number.isNaN(s) || Number.isNaN(e) || e <= s) {
-      toast('Enter times like 0:12.40 — the end must be after the start.', 'error');
+      toast('Use times like 0:12.40, with the end after the start.', 'error');
       start.value = fmtTime(c.start); end.value = fmtTime(c.end);
       return;
     }
@@ -157,7 +155,7 @@ function renderList() {
   }
   const unsure = state.captions.some((c) => c.words.some((w) => w.conf != null && w.conf < 0.5));
   list.replaceChildren(
-    unsure ? h('p', { class: 'hint' }, 'Words with a wavy underline are ones the speech engine wasn’t sure about — worth a check.') : '',
+    unsure ? h('p', { class: 'hint' }, 'A wavy underline means the speech engine wasn’t sure about that word, so give it a quick look.') : '',
     ...state.captions.map(captionCard));
   markActive();
 }
