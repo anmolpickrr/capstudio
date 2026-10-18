@@ -1,4 +1,4 @@
-# Caption Studio
+# Capstudio
 
 An internal tool for the creative team. Upload a finished video and captions are generated automatically, synced word by word. Pick one of 42 caption styles, fine-tune typography, effects, motion and placement with a live preview, and export at the original quality. Videos are only processed temporarily and deleted automatically.
 

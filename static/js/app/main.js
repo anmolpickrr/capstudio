@@ -48,13 +48,14 @@ const LIVE_SITE = 'https://caption-studio-ujgd.onrender.com';
 function showFilesOnlyCopy() {
   $('#view').className = 'welcome';
   $('#view').innerHTML = `<div class="moved">
-    <h1>Caption Studio lives at a new address</h1>
+    <img src="logo.svg" alt="Capstudio by Fastrr" width="163" height="48">
+    <h1>Capstudio lives at a new address</h1>
     <p>This page only holds the app's files, so it can't make captions or export videos.</p>
-    <a class="btn brand lg" href="${LIVE_SITE}">Open Caption Studio</a>
+    <a class="btn brand lg" href="${LIVE_SITE}">Open Capstudio</a>
     <small>${LIVE_SITE.replace('https://', '')}</small></div>`;
 }
 
 boot().catch((e) => {
   if (location.hostname.endsWith('github.io')) showFilesOnlyCopy();
-  else toast(`Caption Studio couldn't start: ${e.message}`, 'error', 15000);
+  else toast(`Capstudio couldn't start: ${e.message}`, 'error', 15000);
 });

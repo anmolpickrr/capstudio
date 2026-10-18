@@ -3,22 +3,22 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>Sign in · Caption Studio</title>
+  <title>Sign in · Capstudio</title>
   <link rel="icon" href="/favicon.svg" type="image/svg+xml">
   <link rel="stylesheet" href="/css/studio.css">
   <style>
     body { display: grid; place-items: center; min-height: 100vh; padding: 24px; overflow: auto;
-      background: radial-gradient(520px 360px at 50% 40%, rgba(62, 224, 127, .09), transparent 70%), var(--dots), var(--bg-0); }
+      background: radial-gradient(520px 360px at 50% 40%, rgba(123, 92, 245, .09), transparent 70%), var(--dots), var(--bg-0); }
     .login { width: min(440px, 100%); background: var(--card); border: 1px solid var(--line-2); border-radius: 26px;
       padding: 32px 28px; box-shadow: 0 30px 80px rgba(0, 0, 0, .45); }
     .login .brand { font-size: 18px; margin-bottom: 22px; }
     .login h1 { font-size: 24px; margin: 0 0 8px; letter-spacing: -.01em; }
     .login p { color: var(--text-2); margin: 0 0 22px; }
     .sample { position: relative; height: 120px; border-radius: 18px; margin-bottom: 24px; overflow: hidden;
-      background: radial-gradient(240px 140px at 70% 20%, rgba(62, 224, 127, .35), transparent 70%), linear-gradient(160deg, #1a1a1c, #0a0a0a); border: 1px solid var(--line-2); display: grid; place-items: end center; padding-bottom: 18px; }
+      background: radial-gradient(240px 140px at 70% 20%, rgba(123, 92, 245, .35), transparent 70%), linear-gradient(160deg, #1a1a1c, #0a0a0a); border: 1px solid var(--line-2); display: grid; place-items: end center; padding-bottom: 18px; }
     .sample span { font: 800 22px/1 Poppins, Inter, sans-serif; color: #fff; text-transform: uppercase;
       -webkit-text-stroke: 5px #000; paint-order: stroke fill; letter-spacing: .01em; }
-    .sample span b { color: #3ee07f; font-weight: 800; }
+    .sample span b { color: #a08bff; font-weight: 800; }
     .google { display: flex; align-items: center; justify-content: center; gap: 12px; width: 100%;
       background: #fff; color: #1f1f1f; border: 0; border-radius: 999px; padding: 13px 16px; font-weight: 600;
       font-size: 15px; cursor: pointer; text-decoration: none; transition: transform .05s, box-shadow .15s; }
@@ -34,13 +34,13 @@
 </head>
 <body>
   <main class="login">
-    <div class="brand">Caption Studio</div>
+    <div class="brand"><img src="/logo.svg" alt="Capstudio by Fastrr" width="129" height="38"></div>
     <div class="sample"><span>Make every <b>video</b> count</span></div>
     <h1>Sign in to continue</h1>
     <p>Upload a video, get captions timed to every word, style them and download.</p>
     <div class="alert info" id="frame-note" hidden>
       Sign-in can't run inside this embedded view.
-      <a id="open-full" target="_blank" rel="noopener">Open Caption Studio in a new tab →</a>
+      <a id="open-full" target="_blank" rel="noopener">Open Capstudio in a new tab</a>
     </div>
     <div class="alert" id="error" hidden></div>
     <a class="google" id="google" href="/auth/login">
