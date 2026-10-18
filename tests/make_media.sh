@@ -12,4 +12,5 @@ gen rotated.mp4 -display_rotation 90 -i land.mp4 -c copy
 gen vert.webm -f lavfi -i testsrc2=size=1080x1920:rate=30:duration=8 -f lavfi -i sine=frequency=300:duration=8 -c:v libvpx-vp9 -b:v 2M -deadline realtime -cpu-used 8 -c:a libopus -shortest
 # VP9 + AAC in MP4: Playwright's Chromium can decode it, so exports run in the browser.
 gen vert_vp9.mp4 -f lavfi -i testsrc2=size=1080x1920:rate=30:duration=8 -f lavfi -i sine=frequency=300:duration=8 -vf scale=out_color_matrix=bt709,format=yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -c:v libvpx-vp9 -b:v 3M -deadline realtime -cpu-used 8 -c:a aac -shortest
-gen rotated_vp9.mp4 -display_rotation 90 -i land.webm -c:v copy -c:a aac
+gen land_vp9.mp4 -i land.mp4 -vf scale=out_color_matrix=bt709,format=yuv420p -colorspace bt709 -color_primaries bt709 -color_trc bt709 -c:v libvpx-vp9 -b:v 4M -deadline realtime -cpu-used 8 -c:a aac
+gen rotated_vp9.mp4 -display_rotation 90 -i land_vp9.mp4 -c copy
