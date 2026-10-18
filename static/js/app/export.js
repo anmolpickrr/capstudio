@@ -97,7 +97,7 @@ export function openExport() {
         try {
           const r = await exportInBrowser({
             file: state.project.file, name: state.project.name || 'video.mp4', info, captions: state.captions,
-            style: state.style, spaced: spaced(), quality, signal: local.signal,
+            style: state.style, spaced: spaced(), watermark: state.watermark, quality, signal: local.signal,
             onProgress: (p, elapsed) => {
               bar.style.width = `${Math.round(p * 100)}%`;
               const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
@@ -118,7 +118,7 @@ export function openExport() {
         }
       }
       const body = kind === 'burn'
-        ? { mode: 'burn', quality, ass_gz: await gzipBase64(toASS(state.captions, state.style, W, H, { spaced: spaced() })) }
+        ? { mode: 'burn', quality, watermark: state.watermark.on ? state.watermark : null, ass_gz: await gzipBase64(toASS(state.captions, state.style, W, H, { spaced: spaced() })) }
         : { mode: 'soft', srt: toSRT(state.captions, state.style, W, H, spaced()), language: state.transcript?.language || 'und' };
       await api(`/api/jobs/${state.project.job}/render`, { method: 'POST', body });
       for (;;) {

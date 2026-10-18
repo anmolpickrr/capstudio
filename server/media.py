@@ -152,11 +152,20 @@ def _escape_filter_path(p: str) -> str:
 
 
 def burn(src: str, ass_name: str, dest: str, info: dict, venc: list[str], cwd: str,
-         progress: Callable[[float], None], on_start: Callable | None = None) -> None:
+         progress: Callable[[float], None], on_start: Callable | None = None,
+         overlay: dict | None = None) -> None:
+    """Draw the captions (and the watermark overlay, if any, under them) into the video."""
     ext = "." + dest.rsplit(".", 1)[1]
-    vf = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
+    ass = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
+    if overlay:
+        o = overlay
+        graph = (f"[1:v]scale={o['w']}:{o['h']},format=rgba,colorchannelmixer=aa={o['alpha']:.3f}[wm];"
+                 f"[0:v:0][wm]overlay={o['x']}:{o['y']}:format=auto,{ass}[v]")
+        video = ["-i", o["path"], "-map", "[v]", "-map", "0:a?", "-filter_complex", graph]
+    else:
+        video = ["-map", "0:v:0", "-map", "0:a?", "-vf", ass]
     cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
-           *IN_THREADS, "-i", src, "-map", "0:v:0", "-map", "0:a?", "-vf", vf, *OUT_THREADS, *venc,
+           *IN_THREADS, "-i", src, *video, *OUT_THREADS, *venc,
            "-fps_mode", "passthrough", *_audio_args(info, ext),
            "-map_metadata", "0", "-movflags", "+faststart", dest]
     _run_with_progress(cmd, info["duration"], progress, cwd, on_start)

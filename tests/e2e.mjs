@@ -71,7 +71,11 @@ for (const [file, tpl, ext] of CASES) {
 // encoder, so the test asks for VP9; the pipeline is the same.
 for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'hormozi']]) {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
-  await page.addInitScript(() => { window.__exportCodecs = ['vp9']; });
+  const watermark = file === 'vert_vp9.mp4';
+  await page.addInitScript((wm) => {
+    window.__exportCodecs = ['vp9'];
+    if (wm) localStorage.setItem('capstudio-watermark', JSON.stringify({ on: true, tone: 'light', format: 'auto', size: 100, opacity: 100 }));
+  }, watermark);
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   page.on('console', (m) => { if (/Browser export unavailable/.test(m.text())) errors.push(m.text().split('\n')[0]); });
@@ -80,6 +84,9 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
     await page.setInputFiles('#file-input', MEDIA + file);
     await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
     await page.click(`.tpl[data-id="${tpl}"]`);
+    const wmSrc = await page.evaluate(() => { const i = document.querySelector('.frame .watermark'); return i && !i.hidden ? i.getAttribute('src') : null; });
+    if (watermark && wmSrc !== '/watermarks/fastrr-light-9x16.png') throw new Error(`preview watermark: ${wmSrc}`);
+    if (!watermark && wmSrc) throw new Error('watermark shown while off');
     await page.click('#export-btn');
     const t0 = Date.now();
     await page.click('#export-dialog .btn.brand');
@@ -103,9 +110,14 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
     const log = execFileSync('sh', ['-c', `ffmpeg -ss 3 -i "${MEDIA + file}" -ss 3 -i "${out}" -lavfi "[0:v]format=rgb24[a];[1:v]format=rgb24[b];[a][b]psnr" -frames:v 1 -f null - 2>&1`]).toString();
     const psnr = Number((log.match(/average:([\d.]+)/) || [])[1]);
     if (!(psnr < 35)) diffs.push(`no captions in the picture (PSNR ${psnr})`);
+    // the watermark's corner marks sit in the top fifth of the frame, away from the captions
+    const top = execFileSync('sh', ['-c', `ffmpeg -ss 3 -i "${MEDIA + file}" -ss 3 -i "${out}" -lavfi "[0:v]format=rgb24,crop=iw:ih*0.2:0:ih*0.06[a];[1:v]format=rgb24,crop=iw:ih*0.2:0:ih*0.06[b];[a][b]psnr" -frames:v 1 -f null - 2>&1`]).toString();
+    const topPsnr = Number((top.match(/average:([\d.]+|inf)/) || [])[1]?.replace('inf', '99'));
+    if (watermark && !(topPsnr < 40)) diffs.push(`no watermark in the picture (PSNR ${topPsnr})`);
+    if (!watermark && !(topPsnr > 40)) diffs.push(`unexpected change above the captions (PSNR ${topPsnr})`);
     if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
     if (diffs.length) throw new Error(diffs.join(', '));
-    console.log(`✓ in-browser export ${file} + ${tpl} → ${v.width}x${v.height}, ${v.nb_read_frames} frames, ${a.codec_name} audio, ${secs.toFixed(1)}s`);
+    console.log(`✓ in-browser export ${file} + ${tpl}${watermark ? ' + watermark' : ''} → ${v.width}x${v.height}, ${v.nb_read_frames} frames, ${a.codec_name} audio, ${secs.toFixed(1)}s`);
   } catch (e) {
     await page.screenshot({ path: join(OUT, `failure-browser-${tpl}.png`) }).catch(() => {});
     fail(`in-browser export ${file} + ${tpl}`, e.message.split('\n')[0]);

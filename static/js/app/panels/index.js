@@ -6,6 +6,7 @@ import { motionPanel } from './motion.js';
 import { positionPanel } from './position.js';
 import { templatesPanel } from './templates.js';
 import { textPanel } from './text.js';
+import { watermarkPanel } from './watermark.js';
 
 export const PANELS = {
   templates: templatesPanel,
@@ -13,6 +14,7 @@ export const PANELS = {
   effects: effectsPanel,
   motion: motionPanel,
   position: positionPanel,
+  watermark: watermarkPanel,
   captions: captionsPanel,
 };
 

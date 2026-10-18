@@ -8,6 +8,7 @@ const P = {
   effects: '<path d="M12 3a9 9 0 1 0 9 9"/><path d="M12 7a5 5 0 1 0 5 5"/><circle cx="18.5" cy="5.5" r="2.5"/>',
   motion: '<path d="M4 17c3-8 6-10 9-10"/><path d="M4 12h4M3 7h3"/><circle cx="17" cy="7" r="3"/><path d="M14 17h7"/>',
   position: '<rect x="3" y="3" width="18" height="18" rx="3"/><path d="M7 16h10"/><path d="M9 13h6"/>',
+  watermark: '<rect x="3" y="4" width="18" height="16" rx="2.5"/><path d="M8 11h5M6.5 14h7" stroke-width="2.2"/>',
   captions: '<rect x="3" y="5" width="18" height="14" rx="2.5"/><path d="M7 13h4M13 13h4M7 16h7"/>',
   language: '<circle cx="12" cy="12" r="9"/><path d="M3 12h18"/><path d="M12 3a14 14 0 0 1 0 18a14 14 0 0 1 0-18"/>',
   play: '<path d="M7 4.5v15l13-7.5z"/>',

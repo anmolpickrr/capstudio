@@ -145,3 +145,31 @@ def test_browser_export_starts_the_download_grace(client, video):
     j = main.jobs[job["id"]]
     assert j.expires_at() == pytest.approx(j.downloaded + main.DOWNLOAD_GRACE_MIN * 60)
     assert main.DOWNLOAD_GRACE_MIN == 20
+
+
+@pytest.mark.parametrize("w,h,fmt,size,expect", [
+    (1080, 1920, "auto", 100, ("9x16", 0, 0, 1080, 1920)),
+    (1080, 1080, "auto", 100, ("1x1", 0, 0, 1080, 1080)),
+    (1920, 1080, "auto", 50, ("1x1", 690, 270, 540, 540)),
+    (1080, 1920, "1x1", 100, ("1x1", 0, 420, 1080, 1080)),
+])
+def test_watermark_placement(w, h, fmt, size, expect):
+    o = main.watermark_overlay(main.Watermark(format=fmt, size=size), w, h)
+    assert o["path"].endswith(f"fastrr-light-{expect[0]}.png") and pathlib.Path(o["path"]).exists()
+    assert (o["x"], o["y"], o["w"], o["h"]) == expect[1:]
+
+
+def test_server_export_with_watermark(client, video):
+    job = upload(client, video)
+    ass = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 640\nPlayResY: 360\n\n[V4+ Styles]\n"
+           "Format: Name, Fontname, Fontsize, PrimaryColour, Bold, Alignment\nStyle: D,Inter,40,&H00FFFFFF,1,2\n\n"
+           "[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:00.00,0:00:05.00,D,Hello\n")
+    r = client.post(f"/api/jobs/{job['id']}/render", json={"mode": "burn", "quality": "fast", "ass": ass,
+                                                         "watermark": {"tone": "dark", "size": 60, "opacity": 50}})
+    assert r.status_code == 200, r.text
+    for _ in range(600):
+        st = client.get(f"/api/jobs/{job['id']}").json()["render"]
+        if st["status"] in ("done", "error"):
+            break
+        time.sleep(0.1)
+    assert st["status"] == "done", st

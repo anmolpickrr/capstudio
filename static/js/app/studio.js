@@ -173,6 +173,7 @@ const TOOLS = [
   ['effects', 'Effects', 'effects'],
   ['motion', 'Motion', 'motion'],
   ['position', 'Layout', 'position'],
+  ['watermark', 'Watermark', 'watermark'],
   null,
   ['captions', 'Captions', 'captions'],
 ];
@@ -229,7 +230,7 @@ function refreshEditor(what) {
   if (state.tool !== lastTool || what === 'project' || what === 'tool' || !$('#panel').firstChild) {
     lastTool = state.tool;
     renderPanel($('#panel'), state.tool);
-  } else if (['style', 'captions', 'history', 'selection', 'active', 'thumb', 'transcript'].includes(what)) {
+  } else if (['style', 'captions', 'history', 'selection', 'active', 'thumb', 'transcript', 'watermark'].includes(what)) {
     PANELS[state.tool]?.update?.(what);
   }
   stage?.refresh();

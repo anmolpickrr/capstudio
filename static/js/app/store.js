@@ -1,5 +1,6 @@
 // App state with undo/redo. Editable content (captions, style, template) is
 // versioned; everything else (playback, progress, UI) is not.
+import { WATERMARK_DEFAULT } from '../engine/watermark.js';
 import { DEFAULT_STYLE } from '../templates/base.js';
 
 export const state = {
@@ -18,7 +19,19 @@ export const state = {
   safeZone: 'off',      // safe-zone overlay shown on the preview (see safezones.js)
   language: 'auto',
   vocabulary: '',
+  watermark: loadWatermark(), // fastrr watermark, remembered in this browser
 };
+
+function loadWatermark() {
+  try { return { ...WATERMARK_DEFAULT, ...JSON.parse(localStorage.getItem('capstudio-watermark') || '{}') }; }
+  catch { return { ...WATERMARK_DEFAULT }; }
+}
+
+export function setWatermark(patch) {
+  state.watermark = { ...state.watermark, ...patch };
+  try { localStorage.setItem('capstudio-watermark', JSON.stringify(state.watermark)); } catch { /* private window */ }
+  emit('watermark');
+}
 
 const listeners = new Set();
 export function subscribe(fn) { listeners.add(fn); return () => listeners.delete(fn); }

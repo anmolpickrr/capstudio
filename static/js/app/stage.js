@@ -1,6 +1,7 @@
 // The preview: the video with the live caption overlay, playback controls,
 // safe-zone overlays, drag-to-position, and the processing overlay.
 import { SvgRenderer } from '../engine/index.js';
+import { watermarkFile, watermarkRect } from '../engine/watermark.js';
 import { icon } from './icons.js';
 import { engine } from './session.js';
 import { editCaption } from './captionops.js';
@@ -18,7 +19,8 @@ export class Stage {
     this.svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
     this.guides = h('div', { class: 'guides', hidden: true, 'aria-hidden': 'true' });
     this.processing = h('div', { class: 'processing', hidden: true });
-    this.frame = h('div', { class: 'frame' }, this.video, this.svg, this.guides);
+    this.watermark = h('img', { class: 'watermark', alt: '', hidden: true, draggable: 'false' });
+    this.frame = h('div', { class: 'frame' }, this.video, this.watermark, this.svg, this.guides);
     this.stage = h('div', { class: 'stage' }, this.frame, this.processing);
     this.renderer = new SvgRenderer(this.svg);
     this.transport = this.buildTransport();
@@ -66,12 +68,25 @@ export class Stage {
     if (!p) return;
     if (p.src && this.src !== p.src) { this.src = p.src; this.proxyTried = false; this.video.src = p.src; }
     this.renderGuides();
+    this.renderWatermark();
     const busy = state.phase === 'uploading' || state.phase === 'generating';
     this.processing.hidden = !busy;
     if (busy) this.renderProcessing();
     this.renderer.setSize(this.W, this.H);
     this.fit();
     this.syncPlay();
+  }
+
+  // The watermark sits over the video and under the captions, placed as in the export.
+  renderWatermark() {
+    const wm = state.watermark;
+    this.watermark.hidden = !wm?.on;
+    if (!wm?.on) return;
+    const { W, H } = this, r = watermarkRect(wm, W, H);
+    const src = `/watermarks/${watermarkFile(wm, W, H)}`;
+    if (this.watermark.getAttribute('src') !== src) this.watermark.src = src;
+    Object.assign(this.watermark.style, { left: `${(r.x / W) * 100}%`, top: `${(r.y / H) * 100}%`,
+      width: `${(r.w / W) * 100}%`, height: `${(r.h / H) * 100}%`, opacity: String(wm.opacity / 100) });
   }
 
   fit() {

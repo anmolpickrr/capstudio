@@ -5,6 +5,7 @@
 // can't be handled, so the caller can fall back to the server.
 import { CanvasRenderer } from '../engine/canvas.js';
 import { CaptionEngine } from '../engine/index.js';
+import { watermarkFile, watermarkRect } from '../engine/watermark.js';
 
 const LIB = '/vendor/mediabunny-1.61.0.min.js';
 const MP4_AUDIO = new Set(['aac', 'mp3', 'ac3', 'eac3', 'alac']);
@@ -25,7 +26,7 @@ export function exportName(original, ext) {
 // bpp is the floor in bits per pixel per frame, for sources that are already small.
 const QUALITY = { max: { k: 1.6, bpp: 0.3 }, high: { k: 1.25, bpp: 0.16 }, fast: { k: 1, bpp: 0.1 } };
 
-export async function exportInBrowser({ file, name, info, captions, style, spaced, quality = 'high', onProgress, signal }) {
+export async function exportInBrowser({ file, name, info, captions, style, spaced, watermark, quality = 'high', onProgress, signal }) {
   if (!browserCanExport()) throw new Unsupported('This browser has no video encoder.');
   if (!file) throw new Unsupported('The original file is not in this tab.');
   if (file.size > MAX_BYTES) throw new Unsupported('The video is too large to export in the browser.');
@@ -61,6 +62,12 @@ export async function exportInBrowser({ file, name, info, captions, style, space
   const canvas = new OffscreenCanvas(W, H);
   const ctx = canvas.getContext('2d');
   const renderer = new CanvasRenderer(W, H);
+  let wm = null;
+  if (watermark?.on) {
+    const res = await fetch(`/watermarks/${watermarkFile(watermark, W, H)}`);
+    if (!res.ok) throw new Error('The watermark image could not be loaded.');
+    wm = { img: await createImageBitmap(await res.blob()), rect: watermarkRect(watermark, W, H), alpha: watermark.opacity / 100 };
+  }
 
   const conversion = await mb.Conversion.init({
     input, output, showWarnings: false,
@@ -70,6 +77,11 @@ export async function exportInBrowser({ file, name, info, captions, style, space
       process: (sample) => {
         const t = sample.timestamp;
         sample.draw(ctx, 0, 0, W, H);
+        if (wm) {
+          ctx.globalAlpha = wm.alpha;
+          ctx.drawImage(wm.img, wm.rect.x, wm.rect.y, wm.rect.w, wm.rect.h);
+          ctx.globalAlpha = 1;
+        }
         renderer.render(ctx, engine.scenesAt(t), t);
         return canvas;
       },

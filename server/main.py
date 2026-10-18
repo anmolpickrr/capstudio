@@ -392,6 +392,26 @@ def _run_transcription(job: Job, req: TranscribeReq) -> None:
 # ---------------------------------------------------------------- render
 
 
+class Watermark(BaseModel):
+    tone: str = Field("light", pattern="^(light|dark)$")
+    format: str = Field("auto", pattern="^(auto|1x1|9x16)$")
+    size: float = Field(100, ge=20, le=100)
+    opacity: float = Field(100, ge=0, le=100)
+
+
+def watermark_overlay(wm: Watermark, w: int, h: int) -> dict:
+    """Where the watermark goes in a w x h frame (same rules as static/js/engine/watermark.js)."""
+    fmt = wm.format if wm.format != "auto" else ("9x16" if w / h < 0.8 else "1x1")
+    ar = 9 / 16 if fmt == "9x16" else 1
+    ow = min(w, h * ar)
+    oh = ow / ar
+    k = wm.size / 100
+    ow, oh = ow * k, oh * k
+    return {"path": str(STATIC / "watermarks" / f"fastrr-{wm.tone}-{fmt}.png"),
+            "x": round((w - ow) / 2), "y": round((h - oh) / 2), "w": max(2, round(ow)), "h": max(2, round(oh)),
+            "alpha": wm.opacity / 100}
+
+
 class RenderReq(BaseModel):
     mode: str = Field("burn", pattern="^(burn|soft)$")
     ass: str = Field("", max_length=20_000_000)
@@ -399,6 +419,7 @@ class RenderReq(BaseModel):
     srt: str = Field("", max_length=20_000_000)
     quality: str = Field("high", pattern="^(max|high|fast)$")
     language: str = "und"
+    watermark: Watermark | None = None
 
 
 ISO3 = {"en": "eng", "hi": "hin", "bn": "ben", "ta": "tam", "te": "tel", "mr": "mar", "gu": "guj",
@@ -471,8 +492,10 @@ def _run_render(job: Job, req: RenderReq) -> None:
                 task.progress = p
                 job.touched = time.time()
 
+            overlay = (watermark_overlay(req.watermark, job.info["width"], job.info["height"])
+                       if req.watermark else None)
             media.burn(str(job.source), "captions.ass", str(out), job.info, venc, str(job.dir),
-                       progress, on_start=lambda p: _export_started(job, p))
+                       progress, on_start=lambda p: _export_started(job, p), overlay=overlay)
             job.output_name = export_name(job.name, ext)
         else:
             (job.dir / "captions.srt").write_text(req.srt, encoding="utf-8")
