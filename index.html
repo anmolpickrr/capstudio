@@ -1,16 +1,25 @@
 <!doctype html>
-<!-- GitHub Pages entry (anmolpickrr.github.io/capstudio). Pages can't run the app's
-     server, so this forwards visitors to the live site on Render. -->
+<!-- GitHub Pages entry (anmolpickrr.github.io/capstudio). Pages only hosts files and
+     can't run the app's server, so this page shows the live site on Render inside a
+     full-window frame; the address bar keeps the github.io address. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>Caption Studio</title>
-  <meta http-equiv="refresh" content="0; url=https://caption-studio-ujgd.onrender.com/">
-  <link rel="canonical" href="https://caption-studio-ujgd.onrender.com/">
-  <style>body { margin: 0; min-height: 100vh; display: grid; place-items: center; background: #050505; color: #f4f4f5; font: 16px system-ui, sans-serif; } a { color: #3ee07f; }</style>
+  <link rel="icon" href="static/favicon.svg" type="image/svg+xml">
+  <style>
+    html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; }
+    iframe { display: block; width: 100%; height: 100%; border: 0; }
+    .waking { position: fixed; inset: 0; display: grid; place-items: center; color: #a1a1aa;
+      font: 15px system-ui, sans-serif; text-align: center; pointer-events: none; transition: opacity .3s; }
+    .waking a { color: #3ee07f; pointer-events: auto; }
+  </style>
 </head>
 <body>
-  <p>Opening Caption Studio… <a href="https://caption-studio-ujgd.onrender.com/">Continue</a></p>
+  <div class="waking" id="waking"><p>Opening Caption Studio…<br><small>If the site was asleep this takes about a minute. <a href="https://caption-studio-ujgd.onrender.com/" target="_top">Open directly</a></small></p></div>
+  <iframe src="https://caption-studio-ujgd.onrender.com/" title="Caption Studio"
+          allow="fullscreen; clipboard-write; autoplay"
+          onload="document.getElementById('waking').style.opacity = 0"></iframe>
 </body>
 </html>
