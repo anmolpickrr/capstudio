@@ -2,6 +2,7 @@
 from __future__ import annotations
 
 import json
+import os
 import re
 import subprocess
 from typing import Callable
@@ -11,6 +12,21 @@ from .fonts import FONTS_DIR
 
 class MediaError(RuntimeError):
     pass
+
+
+# Small servers (Render's free plan: 512 MB, 0.1 CPU) set LOW_POWER=1. ffmpeg then runs
+# single-threaded with a short look-ahead so a 1080p export fits in memory (~300 MB
+# instead of ~700 MB), HEVC is re-encoded as H.264 (x265 needs ~600 MB even when
+# reduced), and burned-in exports are limited to 1080p.
+LOW_POWER = os.environ.get("LOW_POWER") == "1"
+MAX_BURN_PIXELS = 1920 * 1080 if LOW_POWER else 0
+IN_THREADS = ["-threads", "1"] if LOW_POWER else []
+OUT_THREADS = ["-filter_threads", "1", "-threads", "1"] if LOW_POWER else []
+X264_LOW = ["-x264-params", "rc-lookahead=5:bframes=2:ref=2"] if LOW_POWER else []
+
+
+def too_large_to_burn(info: dict) -> bool:
+    return bool(MAX_BURN_PIXELS) and info["width"] * info["height"] > MAX_BURN_PIXELS
 
 
 def probe(path: str) -> dict:
@@ -72,8 +88,8 @@ def extract_audio(src: str, dest: str, mp3: bool = False) -> None:
 def make_proxy(src: str, dest: str) -> None:
     """Low-res H.264 copy for browsers that can't play the original (ProRes, HEVC on some
     browsers). Only used for the preview; the export always uses the original."""
-    _run(["ffmpeg", "-y", "-v", "error", "-i", src, "-vf", "scale=-2:'min(720,ih)'",
-          "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-c:a", "aac", "-b:a", "96k",
+    _run(["ffmpeg", "-y", "-v", "error", *IN_THREADS, "-i", src, "-vf", "scale=-2:'min(720,ih)'",
+          *OUT_THREADS, "-c:v", "libx264", "-preset", "ultrafast", "-crf", "28", "-c:a", "aac", "-b:a", "96k",
           "-movflags", "+faststart", dest])
 
 
@@ -83,6 +99,9 @@ QUALITY = {
     "high":     (17, "medium", 19, "fast"),
     "fast":     (20, "veryfast", 22, "veryfast"),
 }
+if LOW_POWER:  # same quality targets, presets a tenth of a CPU can finish in minutes
+    QUALITY = {"max": (14, "medium", 16, "fast"), "high": (17, "veryfast", 19, "veryfast"),
+               "fast": (20, "superfast", 22, "superfast")}
 X264_PIX = {"yuv420p", "yuvj420p", "yuv422p", "yuv444p", "yuv420p10le", "yuv422p10le",
             "yuv444p10le"}
 X265_PIX = X264_PIX | {"yuv420p12le", "yuv422p12le", "yuv444p12le"}
@@ -103,13 +122,16 @@ def output_plan(info: dict, src_ext: str, quality: str) -> tuple[list[str], str]
         return (["-c:v", "prores_ks", "-profile:v", profile, "-vendor", "apl0",
                  "-pix_fmt", pix_out], ".mov")
     ext = ".mov" if src_ext.lower() == ".mov" else ".mp4"
-    if vcodec == "hevc":
+    if vcodec == "hevc" and not LOW_POWER:
         args = ["-c:v", "libx265", "-crf", str(crf265), "-preset", preset265,
                 "-tag:v", "hvc1", "-x265-params", "log-level=error"]
         args += ["-pix_fmt", pix if pix in X265_PIX else "yuv420p"]
     else:
-        args = ["-c:v", "libx264", "-crf", str(crf264), "-preset", preset264]
-        args += ["-pix_fmt", pix if pix in X264_PIX else "yuv420p"]
+        args = ["-c:v", "libx264", "-crf", str(crf264), "-preset", preset264, *X264_LOW]
+        if LOW_POWER and vcodec == "hevc":  # 8-bit H.264 plays everywhere; 10-bit H.264 doesn't
+            args += ["-pix_fmt", "yuv420p"]
+        else:
+            args += ["-pix_fmt", pix if pix in X264_PIX else "yuv420p"]
     for flag, key in (("-colorspace", "colorSpace"), ("-color_primaries", "colorPrimaries"),
                       ("-color_trc", "colorTransfer"), ("-color_range", "colorRange")):
         if info.get(key) and info[key] != "unknown":
@@ -134,7 +156,7 @@ def burn(src: str, ass_name: str, dest: str, info: dict, venc: list[str], cwd: s
     ext = "." + dest.rsplit(".", 1)[1]
     vf = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
     cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",
-           "-i", src, "-map", "0:v:0", "-map", "0:a?", "-vf", vf, *venc,
+           *IN_THREADS, "-i", src, "-map", "0:v:0", "-map", "0:a?", "-vf", vf, *OUT_THREADS, *venc,
            "-fps_mode", "passthrough", *_audio_args(info, ext),
            "-map_metadata", "0", "-movflags", "+faststart", dest]
     _run_with_progress(cmd, info["duration"], progress, cwd, on_start)

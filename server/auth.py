@@ -44,7 +44,9 @@ def disabled() -> bool:
 
 
 def configured() -> bool:
-    return bool(os.environ.get("GOOGLE_CLIENT_ID") and os.environ.get("GOOGLE_CLIENT_SECRET"))
+    # A placeholder (e.g. "later", typed while setting up the host) counts as not set up.
+    client_id = os.environ.get("GOOGLE_CLIENT_ID", "").strip()
+    return client_id.endswith(".apps.googleusercontent.com") and bool(os.environ.get("GOOGLE_CLIENT_SECRET"))
 
 
 def allowed_domains() -> list[str]:
@@ -61,6 +63,8 @@ def is_allowed(email: str) -> bool:
 def public_url(request: Request) -> str:
     if os.environ.get("PUBLIC_URL"):
         return os.environ["PUBLIC_URL"].rstrip("/")
+    if os.environ.get("RENDER_EXTERNAL_URL"):  # set by Render
+        return os.environ["RENDER_EXTERNAL_URL"].rstrip("/")
     if os.environ.get("SPACE_HOST"):  # set by Hugging Face Spaces
         return f"https://{os.environ['SPACE_HOST']}"
     return str(request.base_url).rstrip("/")

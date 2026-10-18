@@ -11,7 +11,7 @@ from server import auth, main
 @pytest.fixture
 def client(monkeypatch):
     monkeypatch.delenv("AUTH_DISABLED", raising=False)
-    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid")
+    monkeypatch.setenv("GOOGLE_CLIENT_ID", "cid.apps.googleusercontent.com")
     monkeypatch.setenv("GOOGLE_CLIENT_SECRET", "secret")
     monkeypatch.setenv("ALLOWED_EMAIL_DOMAINS", "pickrr.com, shiprocket.com")
     monkeypatch.setenv("PUBLIC_URL", "https://captions.example")
@@ -80,8 +80,12 @@ def test_jobs_are_private_to_their_owner(client, monkeypatch, tmp_path):
         main.jobs.pop(job.id, None)
 
 
-def test_unconfigured_sign_in_explains_itself(client, monkeypatch):
-    monkeypatch.delenv("GOOGLE_CLIENT_ID")
+@pytest.mark.parametrize("client_id", [None, "later"])
+def test_unconfigured_sign_in_explains_itself(client, monkeypatch, client_id):
+    if client_id is None:
+        monkeypatch.delenv("GOOGLE_CLIENT_ID")
+    else:  # a placeholder typed during setup
+        monkeypatch.setenv("GOOGLE_CLIENT_ID", client_id)
     r = client.get("/auth/login", follow_redirects=False)
     assert "error=not_configured" in r.headers["location"]
     assert client.get("/auth/status").json()["configured"] is False

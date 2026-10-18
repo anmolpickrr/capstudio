@@ -1,8 +1,9 @@
 name: Deploy to Hugging Face
 
+# Manual only: the live site runs on Render (render.yaml), which deploys on its own
+# after every push. Hugging Face Docker Spaces need a paid plan; to use one, run this
+# workflow by hand.
 on:
-  push:
-    branches: [main]
   workflow_dispatch:
 
 concurrency:

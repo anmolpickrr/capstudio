@@ -199,7 +199,7 @@ app.middleware("http")(auth.guard)
 # Added last so it runs first: the guard needs the session.
 app.add_middleware(SessionMiddleware, secret_key=auth.SESSION_SECRET, session_cookie="caption_panel",
                    max_age=14 * 24 * 3600, same_site="lax",
-                   https_only=bool(os.environ.get("SPACE_HOST")
+                   https_only=bool(os.environ.get("SPACE_HOST") or os.environ.get("RENDER_EXTERNAL_URL")
                                    or os.environ.get("PUBLIC_URL", "").startswith("https")))
 app.include_router(auth.router)
 
@@ -221,6 +221,8 @@ def config():
         "languages": [{"id": i, "label": label, "group": g} for i, _, label, g in transcribe.LANGUAGES]
         + [{"id": u, "label": label, "group": "Indian", "unsupported": True} for u, label in transcribe.UNSUPPORTED],
         "maxUploadMB": MAX_UPLOAD_MB,
+        "lowPower": media.LOW_POWER,
+        "maxBurnPixels": media.MAX_BURN_PIXELS,
         "retention": {"jobTtlMin": JOB_TTL_MIN, "downloadGraceMin": DOWNLOAD_GRACE_MIN},
     }
 
@@ -421,6 +423,9 @@ def start_render(job_id: str, req: RenderReq, request: Request):
         req.ass = _gunzip(req.ass_gz)
     if req.mode == "burn" and not req.ass.startswith("[Script Info]"):
         raise HTTPException(400, "Invalid caption data.")
+    if req.mode == "burn" and media.too_large_to_burn(job.info):
+        raise HTTPException(400, "This server can draw captions into videos up to 1080p. "
+                                 "For larger videos, export with a subtitle track or download caption files.")
     if req.mode == "soft" and not req.srt.strip():
         raise HTTPException(400, "There are no captions to embed.")
     job.render = Task(status="queued")

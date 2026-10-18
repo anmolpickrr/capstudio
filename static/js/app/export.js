@@ -31,13 +31,16 @@ async function captionFile(kind) {
 export function openExport() {
   dlg = $('#export-dialog');
   const info = state.project.info;
-  const outCodec = info.vcodec === 'prores' ? 'ProRes (same profile)' : info.vcodec === 'hevc' ? 'HEVC' : 'H.264';
+  const cfg = state.config;
+  const outCodec = info.vcodec === 'prores' ? 'ProRes (same profile)' : info.vcodec === 'hevc' && !cfg.lowPower ? 'HEVC' : 'H.264';
+  // A small server can't draw captions into videos above 1080p (not enough memory).
+  const canBurn = !cfg.maxBurnPixels || info.width * info.height <= cfg.maxBurnPixels;
   let quality = 'high';
   const qSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Quality' },
     [['max', 'Maximum'], ['high', 'High'], ['fast', 'Fast']].map(([v, t]) => h('button', { type: 'button', 'data-v': v, 'aria-pressed': String(v === quality),
       onclick: (e) => { quality = v; qSeg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } }, t)));
-  const opt = (value, title, desc, extra, checked) => h('label', { class: 'option' },
-    h('input', { type: 'radio', name: 'export-kind', value, checked: checked ? true : null }),
+  const opt = (value, title, desc, extra, checked, disabled) => h('label', { class: `option${disabled ? ' disabled' : ''}` },
+    h('input', { type: 'radio', name: 'export-kind', value, checked: checked ? true : null, disabled: disabled ? true : null }),
     h('div', { style: { display: 'grid', gap: '8px' } }, h('div', {}, h('b', {}, title), h('span', {}, desc)), extra));
   const files = h('div', { class: 'files' }, [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS (styled)'], ['txt', 'Transcript']]
     .map(([k, t]) => h('button', { class: 'btn sm', type: 'button', html: `${icon('file')}<span>${t}</span>`, onclick: () => captionFile(k) })));
@@ -54,10 +57,12 @@ export function openExport() {
         h('span', {}, `${info.width}×${info.height}`), h('span', {}, info.fps ? `${+info.fps.toFixed(3)} fps` : 'Variable frame rate'),
         h('span', {}, codecName(info.vcodec) + (info.pixFmt?.includes('10') ? ' 10-bit' : '')), h('span', {}, fmtDur(info.duration))),
       state.project.kind === 'demo' ? h('p', { class: 'note info' }, 'This is an example project — the export uses the demo video.') : null,
+      cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'This site runs on a small free server, so drawing captions in takes a while — roughly 3–6 minutes for a 30-second reel. Keep this tab open.') : null,
+      canBurn ? null : h('p', { class: 'note' }, `This server can draw captions into videos up to 1080p, and this one is ${info.width}×${info.height}. You can still add a subtitle track or download caption files.`),
       opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
-        h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
-          h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')), true),
-      opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, false),
+        canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
+          h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')) : null, canBurn, !canBurn),
+      opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, !canBurn),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
       status,
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } },

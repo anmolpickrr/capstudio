@@ -182,8 +182,12 @@ def _get_model():
     global _model, _device
     with _model_lock:
         if _model is None:
-            import ctranslate2
-            from faster_whisper import WhisperModel
+            try:
+                import ctranslate2
+                from faster_whisper import WhisperModel
+            except ImportError:  # slim images (e.g. Render's free plan) ship without it
+                raise RuntimeError("Captions aren't set up on this server yet: "
+                                   "the GROQ_API_KEY setting is missing.") from None
 
             if ctranslate2.get_cuda_device_count() > 0:
                 device, compute = "cuda", "float16"

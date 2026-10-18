@@ -69,15 +69,18 @@ That one scene is drawn two ways: as SVG for the live preview, and as an ASS scr
 
 Set `AUTH_DISABLED=1` to skip Google sign-in while developing.
 
-**Live site:** a free Hugging Face Space, deployed automatically from `main` by `.github/workflows/deploy-huggingface.yml`.
-- Captions come from Groq's hosted Whisper large-v3 (free tier). An on-server `large-v3-turbo` model takes over if Groq is busy.
+**Live site:** Render's free plan, set up from `render.yaml` (Render → New → Blueprint). Render redeploys on every push to `main`.
+- Captions come from Groq's hosted Whisper large-v3 (free tier). There's no on-server backup model: it doesn't fit in the free plan's memory.
 - Sign-in uses Google and is limited to @pickrr.com and @shiprocket.com accounts.
-- One-time setup: add these GitHub secrets, then run the workflow:
-  - `HF_TOKEN`
-  - `GROQ_API_KEY`
-  - `GOOGLE_CLIENT_ID`
-  - `GOOGLE_CLIENT_SECRET`
-- `/api/health` shows the engine and model status.
+- One-time setup: Render asks for `GROQ_API_KEY`, `GOOGLE_CLIENT_ID` and `GOOGLE_CLIENT_SECRET`. Google's redirect URI is `https://<service>.onrender.com/auth/callback`.
+- The free machine has 512 MB of memory and 0.1 CPU, so the image sets `LOW_POWER=1`:
+  - ffmpeg runs single-threaded with a short look-ahead (a 1080p export peaks around 300 MB);
+  - HEVC sources are exported as 8-bit H.264 at the same resolution and frame rate;
+  - burned-in exports are limited to 1080p (subtitle tracks and caption files work at any size).
+- A 30-second reel takes a few minutes to export. The site sleeps after 15 idle minutes, and the next visit takes about a minute to wake it.
+- `/api/health` shows the engine status.
+
+A Hugging Face Space (`deploy/huggingface/`) is also supported, but Docker Spaces now need a paid Hugging Face plan; run the "Deploy to Hugging Face" workflow by hand to use one.
 
 **Docker on your own server:**
 
@@ -98,6 +101,7 @@ The build uses the GPU by default; add `--build-arg GPU=0` to build for CPU only
 | `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET`, `ALLOWED_EMAIL_DOMAINS` | — | Google sign-in. |
 | `JOB_TTL_MIN` / `DOWNLOAD_GRACE_MIN` | `120` / `15` | Delete a job after this many minutes of inactivity, or this many minutes after its download. |
 | `MAX_UPLOAD_MB` | `4096` | Upload limit. |
+| `LOW_POWER` | `0` | `1` for small machines: low-memory ffmpeg settings, HEVC exported as H.264, burn-in limited to 1080p. |
 | `DATA_DIR` | `$TMPDIR/caption-panel` | Scratch space. It must be a dedicated, empty folder; the server refuses to start in a folder holding files it didn't create. |
 | `TRANSCRIBE_CONCURRENCY` / `RENDER_CONCURRENCY` | `3`/`1` with Groq, `1`/`2` otherwise | Jobs run in parallel; queue position is shown to editors. |
 
@@ -135,6 +139,7 @@ static/js/templates/  default settings and the 42-style library
 static/js/app/     the interface: studio, stage, timeline, panels, export, demo
 static/demo/       example videos with prepared captions (scripts/build_demo.py)
 fonts/             caption fonts (scripts/fetch_fonts.py)
+deploy/render/     Render image (render.yaml at the root)
 deploy/huggingface/  Space image and deploy script
 tests/             unit, end-to-end and parity tests
 ```

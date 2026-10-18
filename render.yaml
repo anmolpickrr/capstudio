@@ -1,0 +1,21 @@
+# Render Blueprint: Render → New → Blueprint → pick this repository.
+# Render asks for the three keys below once; SESSION_SECRET is generated for you.
+# Every push to main redeploys automatically.
+services:
+  - type: web
+    name: caption-studio
+    runtime: docker
+    plan: free
+    dockerfilePath: ./deploy/render/Dockerfile
+    dockerContext: .
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: GROQ_API_KEY
+        sync: false
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_CLIENT_SECRET
+        sync: false
+      - key: SESSION_SECRET
+        generateValue: true
