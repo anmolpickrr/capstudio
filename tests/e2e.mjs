@@ -130,6 +130,53 @@ for (const [file, tpl] of [['vert_vp9.mp4', 'two-tier'], ['rotated_vp9.mp4', 'ho
   }
 }
 
+// "Captions only, transparent": a QuickTime Animation .mov with alpha, for Premiere Pro
+// and After Effects, the same size, frame rate and length as the video.
+{
+  const file = 'vert.webm', tpl = 'two-tier';
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + file);
+    await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
+    await page.click(`.tpl[data-id="${tpl}"]`);
+    await page.click('#export-btn');
+    await page.check('input[name="export-kind"][value="overlay"]');
+    const t0 = Date.now();
+    await page.click('#export-dialog .btn.brand');
+    await page.waitForSelector('#export-status a.btn', { timeout: 300000 });
+    const secs = (Date.now() - t0) / 1000;
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export-status a.btn')]);
+    const out = join(OUT, 'overlay.mov');
+    await dl.saveAs(out);
+    const v = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
+      'stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames', '-of', 'json', out])).streams[0];
+    const src = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-select_streams', 'v:0', '-show_entries',
+      'stream=width,height,r_frame_rate,nb_read_frames', '-of', 'json', MEDIA + file])).streams[0];
+    const diffs = [];
+    if (v.codec_name !== 'qtrle' || v.pix_fmt !== 'argb') diffs.push(`format ${v.codec_name} ${v.pix_fmt}, expected qtrle argb`);
+    for (const k of ['width', 'height', 'r_frame_rate', 'nb_read_frames']) if (v[k] !== src[k]) diffs.push(`${k} ${v[k]}, expected ${src[k]}`);
+    if (dl.suggestedFilename() !== 'vert captions.mov') diffs.push(`file name ${dl.suggestedFilename()}`);
+    // a frame with a caption: mostly see-through, with solid caption pixels
+    execFileSync('ffmpeg', ['-v', 'error', '-y', '-i', out, '-vf', "select='eq(n\\,90)'", '-frames:v', '1', join(OUT, 'overlay-90.png')]);
+    const [clear, solid] = execFileSync('python3', ['-c', `from PIL import Image
+a = Image.open('${join(OUT, 'overlay-90.png')}').convert('RGBA').getchannel('A').histogram()
+n = sum(a)
+print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
+    if (!(clear > 0.8 && solid > 0.002)) diffs.push(`alpha: ${(clear * 100).toFixed(1)}% clear, ${(solid * 100).toFixed(2)}% solid`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log(`✓ captions-only export: ${v.width}x${v.height} ${v.codec_name} ${v.pix_fmt}, ${v.nb_read_frames} frames, ${(clear * 100).toFixed(0)}% clear, ${secs.toFixed(1)}s`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-overlay.png') }).catch(() => {});
+    fail('captions-only export', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

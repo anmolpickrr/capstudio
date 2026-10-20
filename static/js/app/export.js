@@ -7,6 +7,7 @@ import { ensureFonts } from '../engine/fonts.js';
 import { fontsFor } from '../engine/layout.js';
 import { api, sleep } from './api.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
+import { exportOverlay } from './overlayexport.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
 import { $, download, h, toast } from './ui.js';
@@ -68,6 +69,7 @@ export function openExport() {
       opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
         canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
           h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')) : null, canBurn, !canBurn),
+      opt('overlay', 'Captions only, transparent', 'Just the captions (and the watermark, if it’s on) on a see-through background, for Premiere Pro and After Effects. Same size, frame rate and length as your video: put it on the track above your footage.'),
       opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, !canBurn),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
       status,
@@ -88,21 +90,37 @@ export function openExport() {
       await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
     } }, 'Cancel');
     status.replaceChildren(h('div', { class: 'result' },
-      h('div', { class: 'result-row' }, h('b', {}, kind === 'burn' ? 'Rendering your video' : 'Adding the subtitle track'), cancel),
+      h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', overlay: 'Drawing the captions', soft: 'Adding the subtitle track' }[kind]), cancel),
       h('div', { class: 'progress' }, bar), msg));
     try {
       const [W, H] = dims();
       await ensureFonts(fontsFor(state.captions, state.style));
+      const showProgress = (p, elapsed) => {
+        bar.style.width = `${Math.round(p * 100)}%`;
+        const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
+        msg.textContent = `${Math.round(p * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
+      };
+      if (kind === 'overlay') {
+        try {
+          const r = await exportOverlay({
+            name: state.project.name || 'video.mp4', info, captions: state.captions, style: state.style, spaced: spaced(),
+            watermark: state.watermark, signal: local.signal, onProgress: showProgress,
+          });
+          if (blobUrl) URL.revokeObjectURL(blobUrl);
+          blobUrl = URL.createObjectURL(r.blob);
+          showDone({ ...r, href: blobUrl, overlay: true });
+        } catch (e) {
+          if (cancelled) { msg.textContent = 'Export cancelled.'; return; }
+          throw e;
+        }
+        return;
+      }
       if (kind === 'burn' && inBrowser) {
         try {
           const r = await exportInBrowser({
             file: state.project.file, name: state.project.name || 'video.mp4', info, captions: state.captions,
             style: state.style, spaced: spaced(), watermark: state.watermark, quality, signal: local.signal,
-            onProgress: (p, elapsed) => {
-              bar.style.width = `${Math.round(p * 100)}%`;
-              const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
-              msg.textContent = `${Math.round(p * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
-            },
+            onProgress: showProgress,
           });
           if (blobUrl) URL.revokeObjectURL(blobUrl);
           blobUrl = URL.createObjectURL(r.blob);
@@ -154,7 +172,8 @@ export function openExport() {
         if (rr.href) api(`/api/jobs/${state.project.job}/downloaded`, { method: 'POST' }).catch(() => {});
       } });
     status.replaceChildren(h('div', { class: 'result ok' },
-      h('div', { class: 'result-row' }, h('div', {}, h('b', {}, 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a)));
+      h('div', { class: 'result-row' }, h('div', {}, h('b', {}, rr.overlay ? 'Your captions are ready' : 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a),
+      rr.overlay ? h('p', { class: 'hint' }, 'In Premiere Pro or After Effects, put it on the track above your video, starting at the same frame. It’s QuickTime Animation with transparency, so it opens directly.') : null));
     if (!dlg.open) toast('Your video is ready. Open Export to download it.', 'ok', 8000);
   }
 }
