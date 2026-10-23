@@ -754,3 +754,14 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .fmt-status.bad { color: #f3d494; }
 .fmt-results { display: grid; gap: 8px; }
 .fmt-focus .range { max-width: 260px; }
+
+/* ---------------------------------------------------------------- queue */
+.recent-item.busy .recent-open { cursor: default; }
+.recent-text small i { font-style: normal; }
+.q-ready { color: #8be0a8; font-weight: 600; }
+.q-busy { color: var(--accent-hover); }
+.q-bad { color: #f3a0a0; }
+.q-done, .q-wait, .q-open { color: var(--text-3); }
+.q-bar { display: block; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-top: 4px; width: 160px; }
+.q-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
+.recent { max-height: 360px; overflow: auto; }

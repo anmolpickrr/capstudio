@@ -1,6 +1,7 @@
 // App entry: loads configuration, fonts and the signed-in user, then shows the Studio.
 import { setCatalogue } from '../engine/fonts.js';
 import { api } from './api.js';
+import { resumeQueue } from './queue.js';
 import { leaveProject } from './session.js';
 import { set, state } from './store.js';
 import { renderStudio } from './studio.js';
@@ -16,6 +17,7 @@ async function boot() {
   chip.textContent = 'Your files are deleted after you download';
   chip.title = `Videos and captions are deleted ${r.downloadGraceMin} min after download, or ${Math.round(r.jobTtlMin / 6) / 10} h after your last activity.`;
   route();
+  resumeQueue();
 }
 
 function showUser(me) {

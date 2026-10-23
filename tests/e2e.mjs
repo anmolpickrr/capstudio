@@ -458,6 +458,59 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// Batch queue: three videos at once are captioned one by one; a reload part-way
+// carries on; a ready one opens with its captions; "Next video" moves on; an
+// exported one is marked as such.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const list = async () => (await page.locator('.recent').innerText()).replace(/\n+/g, ' | ');
+  const st = () => page.evaluate(async () => {
+    const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+    return { name: state.project.name, caps: state.captions.length, tpl: state.templateId, job: !!state.project.job };
+  });
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', [MEDIA + 'vert.webm', MEDIA + 'land.webm', MEDIA + 'vert_vp9.mp4']);
+    await page.waitForSelector('.recent-item');
+    if (!/Queue/i.test(await list())) throw new Error(`no queue: ${await list()}`);
+    await page.waitForTimeout(1200);
+    await page.reload();
+    await page.waitForFunction(() => document.querySelectorAll('.recent-item .q-ready').length === 3, null, { timeout: 240000 });
+    await page.locator('.recent-open').first().click();
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 30000 });
+    await page.waitForFunction(() => !document.getElementById('next-video')?.hidden, null, { timeout: 10000 });
+    const a = await st();
+    if (a.name !== 'vert.webm' || !a.caps || a.tpl !== 'hormozi') throw new Error(`opened ${JSON.stringify(a)}`);
+    await page.click('#next-video');
+    await page.waitForFunction(() => document.querySelector('#file-name')?.textContent === 'land.webm', null, { timeout: 30000 });
+    await page.waitForFunction(async () => {
+      const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      return !!state.project.job;
+    }, null, { timeout: 10000 });
+    await page.click('#export-btn');
+    await page.check('input[name="export-kind"][value="overlay"]');
+    await page.click('#export-dialog .btn.brand');
+    await page.waitForSelector('#export-status a.btn', { timeout: 60000 });
+    await Promise.all([page.waitForEvent('download'), page.click('#export-status a.btn')]);
+    await page.waitForTimeout(500);
+    await page.click('#export-dialog [aria-label="Close"]');
+    await page.click('#new-video');
+    await page.waitForSelector('.recent-item');
+    await page.waitForTimeout(600);
+    const home = await list();
+    if (!/land\.webm \| Exported/.test(home) || !/vert\.webm \| In progress/.test(home) || !/vert_vp9\.mp4 \| Ready to review/.test(home)) throw new Error(`list: ${home}`);
+    if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
+    console.log('✓ batch queue: three videos captioned one by one (through a reload), opened with their captions, "Next video", exported marked');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-queue.png') }).catch(() => {});
+    fail('batch queue', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

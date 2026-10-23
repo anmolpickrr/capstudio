@@ -5,7 +5,7 @@ import { CaptionEngine } from '../engine/index.js';
 import { fitsCaption, fontsFor } from '../engine/layout.js';
 import { api, deleteJob, sleep, upload } from './api.js';
 import { usedRange } from './premiere.js';
-import { loadProject, newId, saveFile, saveProject } from './saved.js';
+import { loadProject, newId, saveFile, saveProject, updateProject } from './saved.js';
 import { DEFAULT_TEMPLATE, templateById } from '../templates/library.js';
 import { clearHistory, emit, set, state, subscribe } from './store.js';
 import { toast } from './ui.js';
@@ -26,7 +26,7 @@ export async function syncEngine() {
   });
 }
 
-function firstStyle() {
+export function firstStyle() {
   if (state.templateId) return state.style;
   const tpl = templateById(DEFAULT_TEMPLATE);
   set({ templateId: tpl.id, style: { ...tpl.style } });
@@ -34,12 +34,20 @@ function firstStyle() {
 }
 
 // Split words into captions at the current style, measuring real text widths.
-export async function rechunk(words = flattenWords(state.captions)) {
-  const info = state.project?.info || { width: 1920, height: 1080 };
-  const style = state.style;
+export async function rechunk(words = flattenWords(state.captions), style = state.style, info = state.project?.info) {
+  const { width, height } = info || { width: 1920, height: 1080 };
   const probe = [{ words }];
   await ensureFonts(fontsFor(probe, style));
-  return chunkWords(words, style, (ws) => fitsCaption(ws, style, info.width, info.height));
+  return chunkWords(words, style, (ws) => fitsCaption(ws, style, width, height));
+}
+
+// Captions from a finished transcript: words past the end of the video dropped,
+// split into captions at the style's length and the video's size.
+export async function captionsFromTranscript(tr, info, style, range = null) {
+  const dur = info?.duration || Infinity;
+  let words = tr.words.filter((w) => w.start < dur - 0.05).map((w) => (w.end > dur ? { ...w, end: dur } : w));
+  if (range) words = words.filter((w) => w.end > range.from && w.start < range.to);
+  return (await rechunk(words, style, info)).map((c) => (c.end > dur ? { ...c, end: dur } : c));
 }
 
 // `premiere`: the clip picked in the Premiere Pro panel ({ sequence, clip, project });
@@ -124,15 +132,8 @@ async function applyTranscript(tr) {
     toast('No speech was found in this video. If there is speech, pick the language and generate again.', 'error', 10000);
     return;
   }
-  // nothing may run past the end of the video
-  const dur = state.project?.info?.duration || Infinity;
-  let words = tr.words.filter((w) => w.start < dur - 0.05).map((w) => (w.end > dur ? { ...w, end: dur } : w));
-  if (state.premiere) {
-    // only the part of the clip used in the timeline
-    const { from, to } = usedRange();
-    words = words.filter((w) => w.end > from && w.start < to);
-  }
-  const captions = (await rechunk(words)).map((c) => (c.end > dur ? { ...c, end: dur } : c));
+  // in the Premiere panel, only the part of the clip used in the timeline
+  const captions = await captionsFromTranscript(tr, state.project?.info, state.style, state.premiere ? usedRange() : null);
   set({ transcript: tr, captions, phase: 'editing', selected: null }, 'project');
   clearHistory();
   emit('captions');
@@ -168,12 +169,14 @@ function snapshot() {
     captions: state.captions, style: state.style, templateId: state.templateId,
     transcript: state.transcript ? transcript : null, language: state.language, vocabulary: state.vocabulary,
     thumb: state.frameThumb || p.thumb || null, peaks: p.peaks || null, premiere: state.premiere || null,
+    exported: !!p.exported, opened: true,
   };
 }
 
 let saveTimer = 0;
 subscribe((what) => {
   if (!['captions', 'style', 'history', 'transcript', 'project', 'thumb'].includes(what)) return;
+  if (what === 'project' && state.project?.exported && state.project.saveId) updateProject(state.project.saveId, { exported: true }).then(() => emit('queue'));
   const p = state.project;
   if (!p?.saveId || !p.info || state.phase !== 'editing' || !state.captions.length) return;
   clearTimeout(saveTimer);
@@ -202,7 +205,8 @@ export async function resumeProject(id, pickFile) {
   runId++;
   set({
     project: { kind: 'upload', name: record.name, file, src: URL.createObjectURL(file), info: record.info, job: null,
-      savedJob: record.job, saveId: id, saved: true, fileSaved: true, peaks: record.peaks, thumb: record.thumb },
+      savedJob: record.job, saveId: id, saved: true, fileSaved: true, peaks: record.peaks, thumb: record.thumb,
+      exported: !!record.exported },
     phase: 'editing', captions: record.captions, style: record.style, templateId: record.templateId,
     transcript: record.transcript, language: record.language || state.language, vocabulary: record.vocabulary || '',
     premiere: record.premiere || null,
@@ -210,7 +214,15 @@ export async function resumeProject(id, pickFile) {
   }, 'project');
   clearHistory();
   emit('captions');
-  toast(`Welcome back to ${record.name}.`, 'ok', 2500);
+  if (!record.opened) updateProject(id, { opened: true }).then(() => emit('queue'));
+  // a freshly queued video's copy on the server is usually still there: use it
+  if (record.job) {
+    const p = state.project;
+    api(`/api/jobs/${record.job}`).then(() => {
+      if (state.project === p && !p.job) { p.job = record.job; p.savedJob = null; emit('project'); }
+    }).catch(() => {});
+  }
+  toast(record.queue && !record.opened ? `${record.name}: check the captions, then export.` : `Welcome back to ${record.name}.`, 'ok', 2500);
 }
 
 // The server's copy of the video, for the jobs only the server can do (writing

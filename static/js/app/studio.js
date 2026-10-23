@@ -7,7 +7,8 @@ import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
 import { captionSelectedClip, engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
 import { inPremiere } from './premiere.js';
-import { listProjects, removeProject } from './saved.js';
+import { listProjects } from './saved.js';
+import { enqueue, liveProgress, nextReady, remove as removeQueued, retry } from './queue.js';
 import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
 import { Timeline } from './timeline.js';
@@ -37,11 +38,16 @@ function layout() {
   stage?.destroy(); timeline?.destroy();
   stage = timeline = null;
   view.replaceChildren(want === 'editor' ? editor() : inPremiere ? panelHome() : welcome());
-  if (want === 'editor') refreshEditor();
+  if (want === 'editor') { refreshEditor(); refreshNext(); }
 }
 
 async function onChange(what) {
   if (state.route !== 'studio' && what !== 'route') return;
+  if (what === 'queue') {
+    if (mounted === 'welcome') fillRecent();
+    else refreshNext();
+    return;
+  }
   if (what === 'project') layout();
   if (mounted !== 'editor') return;
   if (['style', 'captions', 'project'].includes(what)) {
@@ -129,8 +135,8 @@ function welcome() {
 
   const maxGB = Math.round(state.config.maxUploadMB / 1024 * 10) / 10;
   const limit = maxGB >= 1 ? `${maxGB} GB` : `${state.config.maxUploadMB} MB`;
-  const file = h('input', { type: 'file', accept: 'video/*,.mov,.mkv,.mxf', hidden: true, id: 'file-input' });
-  file.addEventListener('change', () => file.files[0] && startUpload(file.files[0]));
+  const file = h('input', { type: 'file', accept: 'video/*,.mov,.mkv,.mxf', hidden: true, id: 'file-input', multiple: true });
+  file.addEventListener('change', () => { openFiles([...file.files]); file.value = ''; });
   const startWith = h('span', { class: 'start-with' });
   const showStart = () => {
     const tpl = state.templateId && templateById(state.templateId);
@@ -141,7 +147,7 @@ function welcome() {
   const upload = h('div', { class: 'upload' },
     h('div', { class: 'upload-main' },
       h('button', { class: 'btn brand lg', type: 'button', onclick: () => file.click() }, 'Choose a video'),
-      h('div', { class: 'upload-hint' }, h('b', {}, 'or drop it anywhere on this page'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}`))),
+      h('div', { class: 'upload-hint' }, h('b', {}, 'or drop it anywhere on this page'), h('span', {}, `MP4, MOV, MKV or WebM, up to ${limit}. Several at once makes a queue.`))),
     h('label', { class: 'upload-options' }, h('span', {}, 'Language in the video'), langSel),
     startWith, file);
 
@@ -190,8 +196,7 @@ function welcome() {
   page.addEventListener('dragleave', () => { if (--depth <= 0) { depth = 0; page.classList.remove('dragging'); } });
   page.addEventListener('drop', (e) => {
     e.preventDefault(); depth = 0; page.classList.remove('dragging');
-    const f = e.dataTransfer.files[0];
-    if (f) startUpload(f);
+    openFiles([...e.dataTransfer.files]);
   });
   return page;
 }
@@ -218,25 +223,74 @@ function pickAgain(record) {
   });
 }
 
+// One video opens in the editor; several go into the queue.
+function openFiles(files) {
+  if (files.length > 1) enqueue(files);
+  else if (files[0]) startUpload(files[0]);
+}
+
+// Where each video is: the queue's stages, then "ready", "in progress", "exported".
+function statusOf(p) {
+  const lv = liveProgress(p.id);
+  if (p.queue === 'waiting') return ['Waiting', 'wait'];
+  if (p.queue === 'uploading') return [`Uploading${lv ? ` ${Math.round(lv.p * 100)}%` : '…'}`, 'busy'];
+  if (p.queue === 'captioning') return [`Writing captions${lv?.p ? ` ${Math.round(lv.p * 100)}%` : '…'}`, 'busy'];
+  if (p.queue === 'error') return [p.error || 'Failed', 'bad'];
+  if (p.exported) return ['Exported', 'done'];
+  if (p.queue === 'ready' && !p.opened) return ['Ready to review', 'ready'];
+  return [`In progress · ${p.captions?.length || 0} captions`, 'open'];
+}
+
+// Saved projects and the queue, to pick up where you left off.
+let recentBox = null;
 function recentList() {
   const box = h('div', { class: 'recent', hidden: true });
-  const fill = async () => {
-    const items = (await listProjects()).slice(0, 3);
-    box.hidden = !items.length;
-    box.replaceChildren(h('span', { class: 'recent-title' }, 'Continue where you left off'),
-      ...items.map((p) => {
-        const row = h('div', { class: 'recent-item' },
-          h('button', { class: 'recent-open', type: 'button', 'aria-label': `Continue ${p.name}`, onclick: () => resumeProject(p.id, pickAgain) },
-            h('span', { class: 'recent-thumb', style: p.thumb ? { backgroundImage: `url(${p.thumb})` } : null }),
-            h('span', { class: 'recent-text' }, h('b', {}, p.name),
-              h('small', {}, `${p.captions?.length || 0} captions · ${ago(p.savedAt)}`))),
-          h('button', { class: 'btn ghost sm icon-only recent-remove', type: 'button', 'aria-label': `Remove ${p.name}`, 'data-tip': 'Remove from this browser',
-            html: icon('close'), onclick: async () => { await removeProject(p.id); fill(); } }));
-        return row;
-      }));
-  };
-  fill();
+  recentBox = box;
+  fillRecent();
   return box;
+}
+
+async function fillRecent() {
+  const box = recentBox;
+  if (!box?.isConnected && box?.dataset.filled) return;
+  const all = await listProjects();
+  const queued = all.filter((p) => p.queue && !p.exported).sort((a, b) => a.queuedAt - b.queuedAt);
+  const others = all.filter((p) => !queued.includes(p)).slice(0, 3);
+  const items = [...queued, ...others];
+  box.dataset.filled = '1';
+  box.hidden = !items.length;
+  const counts = { ready: queued.filter((p) => p.queue === 'ready' && !p.opened).length,
+    working: queued.filter((p) => ['waiting', 'uploading', 'captioning'].includes(p.queue)).length };
+  const title = queued.length
+    ? `Queue · ${counts.ready} ready to review${counts.working ? `, ${counts.working} being captioned` : ''}`
+    : 'Continue where you left off';
+  box.replaceChildren(h('span', { class: 'recent-title' }, title), ...items.map((p) => {
+    const [label, kind] = statusOf(p);
+    const openable = !['waiting', 'uploading', 'captioning', 'error'].includes(p.queue || '');
+    const lv = liveProgress(p.id);
+    return h('div', { class: `recent-item${openable ? '' : ' busy'}`, 'data-id': p.id },
+      h('button', { class: 'recent-open', type: 'button', disabled: openable ? null : true, 'aria-label': `Open ${p.name}`,
+        onclick: () => resumeProject(p.id, pickAgain) },
+        h('span', { class: 'recent-thumb', style: p.thumb ? { backgroundImage: `url(${p.thumb})` } : null }),
+        h('span', { class: 'recent-text' }, h('b', {}, p.name),
+          h('small', {}, h('i', { class: `q-${kind}` }, label), p.queue ? '' : ` · ${ago(p.savedAt)}`),
+          lv ? h('span', { class: 'q-bar' }, h('i', { style: { width: `${Math.round(((lv.stage === 'captioning' ? 0.5 : 0) + lv.p / 2) * 100)}%` } })) : null)),
+      p.queue === 'error' ? h('button', { class: 'btn sm', type: 'button', onclick: () => retry(p.id) }, 'Retry') : null,
+      h('button', { class: 'btn ghost sm icon-only recent-remove', type: 'button', 'aria-label': `Remove ${p.name}`, 'data-tip': 'Remove from this browser',
+        html: icon('close'), onclick: () => removeQueued(p.id) }));
+  }));
+}
+
+// In the editor: open the next video in the queue that's ready to review.
+async function refreshNext() {
+  const btn = document.getElementById('next-video');
+  if (!btn) return;
+  const next = await nextReady(state.project?.saveId);
+  btn.hidden = !next;
+  if (next) {
+    btn.dataset.id = next.id;
+    btn.title = `Next in the queue: ${next.name}`;
+  }
 }
 
 // ---------------------------------------------------------------- live preview
@@ -294,6 +348,8 @@ function editor() {
     h('div', { class: 'bar-actions' },
       h('button', { class: 'btn ghost icon-only', id: 'undo', 'data-tip': 'Undo (Ctrl+Z)', 'data-tip-pos': 'below', html: icon('undo'), onclick: () => undo() }),
       h('button', { class: 'btn ghost icon-only', id: 'redo', 'data-tip': 'Redo (Ctrl+Shift+Z)', 'data-tip-pos': 'below', html: icon('redo'), onclick: () => redo() }),
+      h('button', { class: 'btn', id: 'next-video', hidden: true, html: '<span>Next video ›</span>',
+        onclick: (e) => e.currentTarget.dataset.id && resumeProject(e.currentTarget.dataset.id, pickAgain) }),
       h('button', { class: 'btn', id: 'new-video', html: `<span>${inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
       h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
 

@@ -45,10 +45,23 @@ export async function saveFile(id, file) {
   } catch { return false; }
 }
 
+// Saves merge into what's stored, so fields one part of the app doesn't know
+// about (the queue's status, for one) are kept.
 export async function saveProject(record) {
   try {
-    await run('projects', 'readwrite', (s) => s.put({ ...record, savedAt: Date.now() }));
+    const old = await run('projects', 'readonly', (s) => s.get(record.id));
+    await run('projects', 'readwrite', (s) => s.put({ ...(old || {}), ...record, savedAt: Date.now() }));
     await prune();
+    return true;
+  } catch { return false; }
+}
+
+// Change a few fields of a saved project without touching when it was last edited.
+export async function updateProject(id, patch) {
+  try {
+    const old = await run('projects', 'readonly', (s) => s.get(id));
+    if (!old) return false;
+    await run('projects', 'readwrite', (s) => s.put({ ...old, ...patch }));
     return true;
   } catch { return false; }
 }
@@ -77,8 +90,10 @@ export async function removeProject(id) {
   } catch { /* nothing stored */ }
 }
 
-// Keep the most recent few; older videos would only fill the disk.
+// Keep the most recent few; older videos would only fill the disk. Queued videos
+// stay until they've been exported (or removed by hand).
+const pending = (p) => p.queue && !p.exported;
 async function prune() {
-  const all = await listProjects();
+  const all = (await listProjects()).filter((p) => !pending(p));
   for (const p of all.slice(KEEP)) await removeProject(p.id);
 }
