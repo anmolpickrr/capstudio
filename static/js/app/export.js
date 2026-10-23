@@ -10,12 +10,13 @@ import { ensureJob } from './session.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { exportOverlay } from './overlayexport.js';
 import { exportAE } from './aeexport.js';
+import { exportFormats, formatsSection } from './formats.js';
 import { addToTimeline, inPremiere } from './premiere.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
 import { $, download, h, toast } from './ui.js';
 
-let dlg = null, running = false, cancelled = false, blobUrl = null;
+let dlg = null, running = false, cancelled = false, blobUrl = null, blobs = [];
 
 const codecName = (c) => ({ h264: 'H.264', hevc: 'HEVC', prores: 'ProRes', vp9: 'VP9', av1: 'AV1' }[c] || c);
 const fmtDur = (s) => `${Math.floor(s / 60)}:${String(Math.round(s % 60)).padStart(2, '0')}`;
@@ -58,6 +59,8 @@ export function openExport() {
   const status = h('div', { id: 'export-status' });
   const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Export video</span>', onclick: () => start() });
   const r = state.config.retention;
+  const formats = formatsSection();
+  formats.hidden = true;
 
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
@@ -73,6 +76,7 @@ export function openExport() {
       opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
         canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
           h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')) : null, canBurn, !canBurn),
+      opt('formats', 'Every format at once', 'Vertical 9:16, portrait 4:5, square 1:1 and landscape 16:9 versions in one go, each reframed and with its captions checked against that format’s safe zone. Uses the quality above.', formats),
       opt('overlay', 'Captions only, transparent', 'Just the captions (and the watermark, if it’s on) on a see-through background, for Premiere Pro and After Effects. Same size, frame rate and length as your video: put it on the track above your footage.'),
       opt('ae', 'After Effects, editable layers', 'A script that builds the captions in After Effects as live text and shape layers with every animation as keyframes, plus the fonts it needs. Run it from File › Scripts › Run Script File.'),
       opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, !canBurn),
@@ -81,6 +85,10 @@ export function openExport() {
       h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } },
         h('p', { class: 'hint', style: { maxWidth: '32ch' } }, `Files are deleted from the server ${r.downloadGraceMin} min after you download.`), go))));
   dlg.showModal();
+  dlg.querySelectorAll('input[name="export-kind"]').forEach((radio) => radio.addEventListener('change', () => {
+    formats.hidden = dlg.querySelector('input[name="export-kind"]:checked').value !== 'formats';
+    go.querySelector('span').textContent = formats.hidden ? 'Export video' : 'Export every format';
+  }));
 
   async function start() {
     const kind = dlg.querySelector('input[name="export-kind"]:checked').value;
@@ -95,7 +103,7 @@ export function openExport() {
       if (state.project.job) await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
     } }, 'Cancel');
     status.replaceChildren(h('div', { class: 'result' },
-      h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', overlay: 'Drawing the captions', ae: 'Preparing the After Effects script', soft: 'Adding the subtitle track' }[kind]), cancel),
+      h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', formats: 'Making every format', overlay: 'Drawing the captions', ae: 'Preparing the After Effects script', soft: 'Adding the subtitle track' }[kind]), cancel),
       h('div', { class: 'progress' }, bar), msg));
     try {
       const [W, H] = dims();
@@ -105,6 +113,17 @@ export function openExport() {
         const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
         msg.textContent = `${Math.round(p * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
       };
+      if (kind === 'formats') {
+        const results = await exportFormats({
+          quality, signal: local.signal,
+          onProgress: (i, n, label, p) => {
+            bar.style.width = `${Math.round(((i + p) / n) * 100)}%`;
+            msg.textContent = `${label} (${i + 1} of ${n}) · ${Math.round(p * 100)}%`;
+          },
+        });
+        showFormats(results);
+        return;
+      }
       if (kind === 'ae') {
         const r = await exportAE();
         if (blobUrl) URL.revokeObjectURL(blobUrl);
@@ -175,6 +194,18 @@ export function openExport() {
       running = false;
       go.disabled = false;
     }
+  }
+
+  function showFormats(results) {
+    blobs.forEach((u) => URL.revokeObjectURL(u));
+    blobs = results.map((x) => URL.createObjectURL(x.blob));
+    status.replaceChildren(h('div', { class: 'result ok' },
+      h('div', { class: 'result-row' }, h('b', {}, `${results.length} ${results.length === 1 ? 'version is' : 'versions are'} ready`)),
+      h('div', { class: 'fmt-results' }, results.map((x, i) => h('div', { class: 'result-row' },
+        h('div', {}, h('b', {}, x.label), h('br'), h('small', {}, `${x.file} · ${x.W}×${x.H} · ${fmtSize(x.size)}${x.after ? ` · ${x.after} caption${x.after > 1 ? 's' : ''} outside the safe zone` : ''}`)),
+        h('a', { class: 'btn brand sm', href: blobs[i], download: x.file, html: '<span>Download</span>',
+          onclick: () => { state.project.exported = true; emit('project'); } }))))));
+    if (!dlg.open) toast('Every format is ready. Open Export to download them.', 'ok', 8000);
   }
 
   function showDone(rr) {

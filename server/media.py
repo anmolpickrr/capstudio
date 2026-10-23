@@ -151,17 +151,42 @@ def _escape_filter_path(p: str) -> str:
     return p.replace("\\", "\\\\").replace(":", "\\:").replace("'", "\\'")
 
 
+def reframe_filter(r: dict) -> str:
+    """The picture reframed into another format, as in static/js/engine/reframe.js:
+    cropped to fill (focus fx, fy) or fitted over a blurred, darkened copy."""
+    w, h = r["width"], r["height"]
+    if r.get("mode") == "fit":
+        bw, bh = max(8, round(w / 24)), max(8, round(h / 24))
+        return (f"[0:v:0]split[s1][s2];[s1]scale={bw}:{bh}:force_original_aspect_ratio=increase,crop={bw}:{bh},"
+                f"scale={w}:{h}:flags=bicubic,boxblur=2:1,colorchannelmixer=rr=0.72:gg=0.72:bb=0.72[bg];"
+                f"[s2]scale={w}:{h}:force_original_aspect_ratio=decrease[fg];"
+                f"[bg][fg]overlay=(W-w)/2:(H-h)/2,setsar=1[base];")
+    fx, fy = r.get("fx", 0.5), r.get("fy", 0.5)
+    return (f"[0:v:0]scale={w}:{h}:force_original_aspect_ratio=increase,"
+            f"crop={w}:{h}:(iw-{w})*{fx:.4f}:(ih-{h})*{fy:.4f},setsar=1[base];")
+
+
 def burn(src: str, ass_name: str, dest: str, info: dict, venc: list[str], cwd: str,
          progress: Callable[[float], None], on_start: Callable | None = None,
-         overlay: dict | None = None) -> None:
-    """Draw the captions (and the watermark overlay, if any, under them) into the video."""
+         overlay: dict | None = None, reframe: dict | None = None) -> None:
+    """Draw the captions (and the watermark overlay, if any, under them) into the
+    video, reframed into another format if asked."""
     ext = "." + dest.rsplit(".", 1)[1]
     ass = f"ass={ass_name}:fontsdir='{_escape_filter_path(str(FONTS_DIR))}'"
-    if overlay:
-        o = overlay
-        graph = (f"[1:v]scale={o['w']}:{o['h']},format=rgba,colorchannelmixer=aa={o['alpha']:.3f}[wm];"
-                 f"[0:v:0][wm]overlay={o['x']}:{o['y']}:format=auto,{ass}[v]")
-        video = ["-i", o["path"], "-map", "[v]", "-map", "0:a?", "-filter_complex", graph]
+    if overlay or reframe:
+        graph, video_in = "", "[0:v:0]"
+        if reframe:
+            graph += reframe_filter(reframe)
+            video_in = "[base]"
+        extra = []
+        if overlay:
+            o = overlay
+            graph += (f"[1:v]scale={o['w']}:{o['h']},format=rgba,colorchannelmixer=aa={o['alpha']:.3f}[wm];"
+                      f"{video_in}[wm]overlay={o['x']}:{o['y']}:format=auto[ov];")
+            video_in = "[ov]"
+            extra = ["-i", o["path"]]
+        graph += f"{video_in}{ass}[v]"
+        video = [*extra, "-map", "[v]", "-map", "0:a?", "-filter_complex", graph]
     else:
         video = ["-map", "0:v:0", "-map", "0:a?", "-vf", ass]
     cmd = ["ffmpeg", "-y", "-v", "error", "-nostats", "-progress", "pipe:1",

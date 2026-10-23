@@ -191,3 +191,26 @@ def test_premiere_panel_download(client):
         assert "'http://testserver'" in text and "/premiere/capstudio-premiere.zip" in text and "__SITE__" not in text
         assert "PlayerDebugMode" in text
     assert client.get("/premiere/install.exe").status_code == 404
+
+
+@pytest.mark.parametrize("mode", ["fill", "fit"])
+def test_server_export_in_another_format(client, video, mode):
+    """The server reframes the 16:9 test clip into 9:16, named after the format."""
+    job = upload(client, video)
+    ass = ("[Script Info]\nScriptType: v4.00+\nPlayResX: 360\nPlayResY: 640\n\n[V4+ Styles]\n"
+           "Format: Name, Fontname, Fontsize, PrimaryColour, Bold, Alignment\nStyle: D,Inter,30,&H00FFFFFF,1,2\n\n"
+           "[Events]\nFormat: Layer, Start, End, Style, Text\nDialogue: 0,0:00:00.00,0:00:05.00,D,Hello\n")
+    r = client.post(f"/api/jobs/{job['id']}/render", json={"mode": "burn", "quality": "fast", "ass": ass,
+                                                         "reframe": {"width": 360, "height": 640, "mode": mode, "fx": 0.2, "suffix": "9x16"}})
+    assert r.status_code == 200, r.text
+    for _ in range(600):
+        st = client.get(f"/api/jobs/{job['id']}").json()["render"]
+        if st["status"] in ("done", "error"):
+            break
+        time.sleep(0.1)
+    assert st["status"] == "done", st
+    assert st["file"] == "clip 9x16.mp4"
+    out = main.jobs[job["id"]].output
+    probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
+                            "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip()
+    assert probe == "360,640"

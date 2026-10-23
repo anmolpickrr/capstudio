@@ -449,6 +449,16 @@ def watermark_overlay(wm: Watermark, w: int, h: int) -> dict:
             "alpha": wm.opacity / 100}
 
 
+class Reframe(BaseModel):
+    """Another format of the video (see static/js/engine/reframe.js)."""
+    width: int = Field(..., ge=64, le=4096)
+    height: int = Field(..., ge=64, le=4096)
+    mode: str = Field("fill", pattern="^(fill|fit)$")
+    fx: float = Field(0.5, ge=0, le=1)
+    fy: float = Field(0.5, ge=0, le=1)
+    suffix: str = Field("", max_length=16, pattern=r"^[0-9x]*$")
+
+
 class RenderReq(BaseModel):
     mode: str = Field("burn", pattern="^(burn|soft)$")
     ass: str = Field("", max_length=20_000_000)
@@ -457,6 +467,7 @@ class RenderReq(BaseModel):
     quality: str = Field("high", pattern="^(max|high|fast)$")
     language: str = "und"
     watermark: Watermark | None = None
+    reframe: Reframe | None = None
 
 
 ISO3 = {"en": "eng", "hi": "hin", "bn": "ben", "ta": "tam", "te": "tel", "mr": "mar", "gu": "guj",
@@ -529,11 +540,14 @@ def _run_render(job: Job, req: RenderReq) -> None:
                 task.progress = p
                 job.touched = time.time()
 
-            overlay = (watermark_overlay(req.watermark, job.info["width"], job.info["height"])
-                       if req.watermark else None)
+            rf = req.reframe
+            w, h = (rf.width, rf.height) if rf else (job.info["width"], job.info["height"])
+            overlay = watermark_overlay(req.watermark, w, h) if req.watermark else None
             media.burn(str(job.source), "captions.ass", str(out), job.info, venc, str(job.dir),
-                       progress, on_start=lambda p: _export_started(job, p), overlay=overlay)
-            job.output_name = export_name(job.name, ext)
+                       progress, on_start=lambda p: _export_started(job, p), overlay=overlay,
+                       reframe=rf.model_dump() if rf else None)
+            job.output_name = (f"{pathlib.Path(job.name).stem} {rf.suffix}{ext}" if rf and rf.suffix
+                               else export_name(job.name, ext))
         else:
             (job.dir / "captions.srt").write_text(req.srt, encoding="utf-8")
             ext = src_ext.lower() if src_ext.lower() in (".mov", ".mkv") else ".mp4"

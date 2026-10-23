@@ -404,6 +404,60 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// Every format at once: a landscape video as 9:16 (fitted over a blurred copy),
+// 1:1 (cropped) and 16:9, with captions placed low enough to cross the Instagram
+// Reels safe zone so they're moved inside for 9:16 only.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 1000 }, acceptDownloads: true });
+  await page.addInitScript(() => { window.__exportCodecs = ['vp9']; localStorage.removeItem('capstudio-formats'); });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'land_vp9.mp4');
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 120000 });
+    await page.click('.tpl[data-id="fastrr-pill"]');
+    // captions right at the bottom: fine for 16:9, inside Instagram's caption area for 9:16
+    await page.evaluate(async () => {
+      const { setStyle } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      setStyle({ vPos: 'bottom', vOffset: 12 });
+    });
+    await page.click('#export-btn');
+    await page.check('input[name="export-kind"][value="formats"]');
+    const rows = page.locator('.fmt-row');
+    await page.waitForFunction(() => document.querySelectorAll('.fmt-status').length === 4 && [...document.querySelectorAll('.fmt-status')].every((s) => s.textContent));
+    const status = await page.locator('.fmt-status').allInnerTexts();
+    const diffs = [];
+    if (!/Moved inside the Instagram Reels safe zone/.test(status[0])) diffs.push(`9:16: ${status[0]}`);
+    if (!/Inside the title-safe area/.test(status[3])) diffs.push(`16:9: ${status[3]}`);
+    // "Keep my layout" undoes the move for that format only
+    await rows.nth(0).locator('button.linkish').click();
+    if (!/cross the Instagram Reels safe zone/.test(await rows.nth(0).locator('.fmt-status').innerText())) diffs.push('"Keep my layout" did not apply');
+    await rows.nth(0).locator('button.linkish').click();
+    await page.click('#export-dialog .btn.brand.lg');
+    await page.waitForSelector('.fmt-results a', { timeout: 600000 });
+    const links = page.locator('.fmt-results a');
+    const got = {};
+    for (let i = 0; i < await links.count(); i++) {
+      const [dl] = await Promise.all([page.waitForEvent('download'), links.nth(i).click()]);
+      const out = join(OUT, `fmt-${i}.mp4`);
+      await dl.saveAs(out);
+      const v = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-select_streams', 'v:0', '-show_entries', 'stream=width,height', '-of', 'json', out])).streams[0];
+      got[dl.suggestedFilename()] = `${v.width}x${v.height}`;
+    }
+    const want = { 'land_vp9 9x16.mp4': '1080x1920', 'land_vp9 1x1.mp4': '1080x1080', 'land_vp9 16x9.mp4': '1920x1080' };
+    if (JSON.stringify(got) !== JSON.stringify(want)) diffs.push(`made ${JSON.stringify(got)}`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ every format: 9:16, 1:1 and 16:9 from one edit; 9:16 captions moved inside the Instagram Reels safe zone, "Keep my layout" works');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-formats.png') }).catch(() => {});
+    fail('every format', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

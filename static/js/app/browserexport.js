@@ -5,6 +5,7 @@
 // can't be handled, so the caller can fall back to the server.
 import { CanvasRenderer } from '../engine/canvas.js';
 import { CaptionEngine } from '../engine/index.js';
+import { drawFrame } from '../engine/reframe.js';
 import { watermarkFile, watermarkRect } from '../engine/watermark.js';
 
 const LIB = '/vendor/mediabunny-1.61.0.min.js';
@@ -26,7 +27,9 @@ export function exportName(original, ext) {
 // bpp is the floor in bits per pixel per frame, for sources that are already small.
 const QUALITY = { max: { k: 1.6, bpp: 0.3 }, high: { k: 1.25, bpp: 0.16 }, fast: { k: 1, bpp: 0.1 } };
 
-export async function exportInBrowser({ file, name, info, captions, style, spaced, watermark, quality = 'high', onProgress, signal }) {
+// `out` ({ W, H, frame, file }) makes another format of the video: the picture is
+// reframed into W × H (see engine/reframe.js) and the result gets its own file name.
+export async function exportInBrowser({ file, name, info, captions, style, spaced, watermark, quality = 'high', onProgress, signal, out = null }) {
   if (!browserCanExport()) throw new Unsupported('This browser has no video encoder.');
   if (!file) throw new Unsupported('The original file is not in this tab.');
   if (file.size > MAX_BYTES) throw new Unsupported('The video is too large to export in the browser.');
@@ -36,7 +39,7 @@ export async function exportInBrowser({ file, name, info, captions, style, space
   if (!track) throw new Unsupported('This file type can’t be read in the browser.');
   if (!(await track.canDecode())) throw new Unsupported('This browser can’t decode the video.');
 
-  const W = info.width, H = info.height;
+  const W = out?.W || info.width, H = out?.H || info.height;
   const stats = await track.computePacketStats(120);
   const fps = stats.averagePacketRate || info.fps || 30;
   const q = QUALITY[quality] || QUALITY.high;
@@ -62,6 +65,7 @@ export async function exportInBrowser({ file, name, info, captions, style, space
   const canvas = new OffscreenCanvas(W, H);
   const ctx = canvas.getContext('2d');
   const renderer = new CanvasRenderer(W, H);
+  const scratch = {};
   let wm = null;
   if (watermark?.on) {
     const res = await fetch(`/watermarks/${watermarkFile(watermark, W, H)}`);
@@ -76,7 +80,14 @@ export async function exportInBrowser({ file, name, info, captions, style, space
       processedWidth: W, processedHeight: H,
       process: (sample) => {
         const t = sample.timestamp;
-        sample.draw(ctx, 0, 0, W, H);
+        if (out) {
+          ctx.fillStyle = '#000';
+          ctx.fillRect(0, 0, W, H);
+          drawFrame(ctx, (c, sx, sy, sw, sh, dx, dy, dw, dh) => sample.draw(c, sx, sy, sw, sh, dx, dy, dw, dh),
+            sample.displayWidth || info.width, sample.displayHeight || info.height, W, H, out.frame, scratch);
+        } else {
+          sample.draw(ctx, 0, 0, W, H);
+        }
         if (wm) {
           ctx.globalAlpha = wm.alpha;
           ctx.drawImage(wm.img, wm.rect.x, wm.rect.y, wm.rect.w, wm.rect.h);
@@ -104,5 +115,5 @@ export async function exportInBrowser({ file, name, info, captions, style, space
     signal?.removeEventListener('abort', abort);
   }
   const blob = new Blob([output.target.buffer], { type: mov ? 'video/quicktime' : 'video/mp4' });
-  return { blob, file: exportName(name, ext), size: blob.size, elapsed: (performance.now() - t0) / 1000 };
+  return { blob, file: out?.file ? `${out.file}${ext}` : exportName(name, ext), size: blob.size, elapsed: (performance.now() - t0) / 1000 };
 }
