@@ -79,6 +79,7 @@ def catalogue() -> list[dict]:
             "file": path.name,
             "family": family,
             "assName": full,
+            "ps": name.getDebugName(6) or full.replace(" ", ""),  # PostScript name, for After Effects
             "weight": os2.usWeightClass,
             "italic": italic,
             "label": WEIGHT_LABELS.get(os2.usWeightClass, str(os2.usWeightClass)) + (" Italic" if italic else ""),

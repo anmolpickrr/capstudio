@@ -9,6 +9,7 @@ import { api, sleep } from './api.js';
 import { ensureJob } from './session.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { exportOverlay } from './overlayexport.js';
+import { exportAE } from './aeexport.js';
 import { addToTimeline, inPremiere } from './premiere.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
@@ -73,6 +74,7 @@ export function openExport() {
         canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
           h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')) : null, canBurn, !canBurn),
       opt('overlay', 'Captions only, transparent', 'Just the captions (and the watermark, if it’s on) on a see-through background, for Premiere Pro and After Effects. Same size, frame rate and length as your video: put it on the track above your footage.'),
+      opt('ae', 'After Effects, editable layers', 'A script that builds the captions in After Effects as live text and shape layers with every animation as keyframes, plus the fonts it needs. Run it from File › Scripts › Run Script File.'),
       opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, !canBurn),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
       status,
@@ -93,7 +95,7 @@ export function openExport() {
       if (state.project.job) await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
     } }, 'Cancel');
     status.replaceChildren(h('div', { class: 'result' },
-      h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', overlay: 'Drawing the captions', soft: 'Adding the subtitle track' }[kind]), cancel),
+      h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', overlay: 'Drawing the captions', ae: 'Preparing the After Effects script', soft: 'Adding the subtitle track' }[kind]), cancel),
       h('div', { class: 'progress' }, bar), msg));
     try {
       const [W, H] = dims();
@@ -103,6 +105,13 @@ export function openExport() {
         const eta = elapsed > 1 && p > 0.03 ? Math.max(1, Math.round(elapsed / p - elapsed)) : null;
         msg.textContent = `${Math.round(p * 100)}%${eta ? ` · about ${eta < 60 ? `${eta}s` : `${Math.round(eta / 60)} min`} left` : ''}`;
       };
+      if (kind === 'ae') {
+        const r = await exportAE();
+        if (blobUrl) URL.revokeObjectURL(blobUrl);
+        blobUrl = URL.createObjectURL(r.blob);
+        showDone({ ...r, href: blobUrl, ae: true, elapsed: 0 });
+        return;
+      }
       if (kind === 'overlay') {
         try {
           const r = await exportOverlay({
@@ -178,7 +187,9 @@ export function openExport() {
         if (rr.href && state.project.job) api(`/api/jobs/${state.project.job}/downloaded`, { method: 'POST' }).catch(() => {});
       } });
     status.replaceChildren(h('div', { class: 'result ok' },
-      h('div', { class: 'result-row' }, h('div', {}, h('b', {}, rr.overlay ? 'Your captions are ready' : 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a),
+      h('div', { class: 'result-row' }, h('div', {}, h('b', {}, rr.ae ? 'Your After Effects script is ready' : rr.overlay ? 'Your captions are ready' : 'Your video is ready'), h('br'),
+        h('small', {}, rr.ae ? `${rr.file} · ${rr.layers} layers, ${rr.fonts} font${rr.fonts === 1 ? '' : 's'}` : `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a),
+      rr.ae ? h('p', { class: 'hint' }, 'Unzip it, install the fonts in its “fonts” folder, then in After Effects choose File › Scripts › Run Script File and pick the .jsx. Place the new composition over your footage at 0:00.') : null,
       rr.overlay ? h('p', { class: 'hint' }, 'In Premiere Pro or After Effects, put it on the track above your video, starting at the same frame. It’s QuickTime Animation with transparency, so it opens directly.') : null));
     if (!dlg.open) toast('Your video is ready. Open Export to download it.', 'ok', 8000);
   }

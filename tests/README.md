@@ -18,6 +18,7 @@ cd tests && npm install && npx playwright install chromium
 node e2e.mjs                             # upload → captions → style → export → download
 node parity.mjs                          # preview vs export, pixel comparison
 node premiere_host.mjs                   # the Premiere panel's ExtendScript, against a stand-in Premiere
+node ae_script.mjs                       # the After Effects script, against a stand-in After Effects
 ```
 
 - **`e2e.mjs`** exports five kinds of source video:

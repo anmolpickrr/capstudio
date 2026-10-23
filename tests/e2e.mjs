@@ -303,6 +303,107 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// After Effects, editable layers: the zip from the Export dialog, and its script run
+// against a stand-in for After Effects (tests/ae_script.mjs).
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.addInitScript(() => localStorage.setItem('capstudio-watermark', JSON.stringify({ on: true, tone: 'light', format: 'auto', size: 100, opacity: 80 })));
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 120000 });
+    await page.click('.tpl[data-id="karaoke"]');
+    await page.click('#export-btn');
+    await page.check('input[name="export-kind"][value="ae"]');
+    await page.click('#export-dialog .btn.brand');
+    await page.waitForSelector('#export-status a.btn', { timeout: 60000 });
+    const [dl] = await Promise.all([page.waitForEvent('download'), page.click('#export-status a.btn')]);
+    const zipPath = join(OUT, 'ae.zip'), dir = join(OUT, 'ae');
+    await dl.saveAs(zipPath);
+    execFileSync('python3', ['-c', `import zipfile; zipfile.ZipFile('${zipPath}').extractall('${dir}')`]);
+    const files = execFileSync('sh', ['-c', `cd "${dir}" && find . -type f | sort`]).toString().trim().split('\n');
+    const want = ['./README.txt', './fonts/Poppins-Black.ttf', './vert captions.jsx', './watermark.png'];
+    if (want.some((f) => !files.includes(f))) throw new Error(`zip has ${files.join(', ')}`);
+    if (dl.suggestedFilename() !== 'vert After Effects captions.zip') throw new Error(`file name ${dl.suggestedFilename()}`);
+    const run = execFileSync('node', [new URL('./ae_script.mjs', import.meta.url).pathname, join(dir, 'vert captions.jsx')]).toString();
+    if (!/all passed/.test(run)) throw new Error(run.split('\n').filter((l) => l.startsWith('✗')).join('; '));
+
+    // the layer data, drawn the way After Effects composites it, against the preview
+    await page.goto(`${BASE}/__parity/`);
+    await page.waitForFunction(() => window.ready === true);
+    const res = await page.evaluate(async (tpls) => {
+  const { CaptionEngine } = await import('/js/engine/index.js');
+  const { CanvasRenderer } = await import('/js/engine/canvas.js');
+  const { toAE } = await import('/js/engine/ae.js');
+  const { cssFamily, fontById } = await import('/js/engine/fonts.js');
+  const { roundedRect } = await import('/js/engine/svg.js');
+  const { templateById } = await import('/js/templates/library.js');
+  const W = 1080, H = 1920, out = {};
+  const words = 'Make every single video count for your brand today'.split(' ').map((t, i) => ({ text: t, start: 0.2 + i * 0.32, end: 0.2 + i * 0.32 + 0.3 }));
+  const captions = [{ id: 'a', start: 0.2, end: 1.6, words: words.slice(0, 4) }, { id: 'b', start: 1.6, end: 3.2, words: words.slice(4) }];
+  const val = (keys, t) => {
+    if (!keys) return null;
+    if (keys.length === 1 || t <= keys[0][0]) return keys[0].slice(1);
+    for (let i = 1; i < keys.length; i++) if (t <= keys[i][0]) {
+      const a = keys[i - 1], c = keys[i], k = (t - a[0]) / (c[0] - a[0]);
+      return a.slice(1).map((v, j) => v + (c[j + 1] - v) * k);
+    }
+    return keys[keys.length - 1].slice(1);
+  };
+  const hold = (keys, t) => { let s = keys[0]; for (const k of keys) if (k[0] <= t + 1e-6) s = k; return s; };
+  for (const id of tpls) {
+    const style = templateById(id).style;
+    const engine = new CaptionEngine(); await engine.set({ captions, style, W, H }); await engine.set({ captions, style, W, H });
+    const data = toAE(captions, style, W, H, { fps: 30, duration: 3.4 });
+    const scores = [];
+    for (const t of [11 / 30, 27 / 30, 52 / 30, 78 / 30]) {
+      const a = new OffscreenCanvas(W, H), ca = a.getContext('2d'); ca.fillStyle = '#3a4a5a'; ca.fillRect(0, 0, W, H);
+      new CanvasRenderer(W, H).render(ca, engine.scenesAt(t), t);
+      const bcv = new OffscreenCanvas(W, H), cb = bcv.getContext('2d'); cb.fillStyle = '#3a4a5a'; cb.fillRect(0, 0, W, H);
+      for (const L of data.layers) {
+        if (t < L.in || t >= L.out) continue;
+        const [x, y] = val(L.keys.position, t), [s] = val(L.keys.scale, t), [rot] = val(L.keys.rotation, t), [op] = val(L.keys.opacity, t);
+        const [blur] = val(L.keys.blur, t);
+        cb.save(); cb.globalAlpha = op / 100; cb.translate(x, y); cb.rotate(rot * Math.PI / 180); cb.scale(s / 100, s / 100);
+        if (blur > 0.05) cb.filter = `blur(${(blur / 2.4 * s / 100).toFixed(2)}px)`;
+        if (L.type === 'box') {
+          const [w, h] = val(L.keys.size, t), [r] = val(L.keys.radius, t);
+          cb.fillStyle = L.color; cb.fill(new Path2D(roundedRect(w, h, r)));
+        } else {
+          cb.translate(0, -L.desc);
+          if (L.keys.mask) { const [mx, my, mw, mh] = val(L.keys.mask, t); cb.beginPath(); cb.rect(mx, my, mw, mh); cb.clip(); }
+          const st = hold(L.style, t);
+          cb.font = `${L.size}px "cp-${L.fontFile.replace(/\.[ot]tf$/, '')}"`;
+          cb.letterSpacing = `${(L.tracking / 1000) * L.size}px`;
+          cb.textAlign = 'center'; cb.lineJoin = 'round';
+          if (st[2] > 0) { cb.strokeStyle = L.stroke; cb.lineWidth = st[2]; cb.strokeText(L.text, 0, 0); }
+          if (st[1]) { cb.fillStyle = st[1]; cb.fillText(L.text, 0, 0); }
+        }
+        cb.restore();
+      }
+      const da = ca.getImageData(0, 0, W, H).data, db = cb.getImageData(0, 0, W, H).data;
+      let se = 0; for (let i = 0; i < da.length; i += 4) for (let c = 0; c < 3; c++) { const d = da[i + c] - db[i + c]; se += d * d; }
+      const mse = se / (W * H * 3);
+      scores.push(+(mse ? 10 * Math.log10(255 * 255 / mse) : 99).toFixed(1));
+    }
+    out[id] = { scores, layers: data.layers.length };
+  }
+  return out;
+}, ['hormozi', 'karaoke', 'fastrr-pill', 'fastrr-marker', 'two-tier', 'popstar', 'serif-stack', 'big-word']);
+    const low = Object.entries(res).filter(([, v]) => Math.min(...v.scores) < 28).map(([k, v]) => `${k} ${Math.min(...v.scores)} dB`);
+    if (low.length) throw new Error(`layers drift from the preview: ${low.join(', ')}`);
+    if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
+    console.log(`✓ After Effects: zip with script, font and watermark; the script builds every layer; layers match the preview (lowest ${Math.min(...Object.values(res).flatMap((v) => v.scores))} dB)`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-ae.png') }).catch(() => {});
+    fail('After Effects export', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
