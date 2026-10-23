@@ -1,0 +1,17 @@
+# Team glossary: names and terms every caption should spell exactly like this.
+# One per line. They're given to the speech engine for every video, words that
+# match apart from capitals are fixed automatically (shiprocket -> Shiprocket),
+# and near misses are suggested in the editor (faster -> Fastrr?).
+# Add your product names here; lines starting with # are ignored.
+Fastrr
+Shiprocket
+Pickrr
+Capstudio
+Shopify
+WooCommerce
+UPI
+COD
+RTO
+NDR
+D2C
+SKU

@@ -27,6 +27,25 @@ def fake(audio, duration, code, prompt, vocab, progress):
 
 transcribe._local = fake
 
+# A stand-in for the text model behind "Change script": Devanagari for a few known
+# words, and an English "translation" that's easy to recognise in tests.
+from server import script  # noqa: E402
+
+DEVA = {"yeh": "यह", "bahut": "बहुत", "aasan": "आसान", "hai,": "है,", "hai": "है"}
+
+
+def fake_chat(system, user):
+    import json
+    items = json.loads(user)["items"]
+    if "Devanagari" in system:
+        return {"items": [{"id": it["id"], "words": [DEVA.get(w.lower(), w) for w in it["words"]]} for it in items]}
+    return {"items": [{"id": it["id"], "text": "EN " + it["text"]} for it in items]}
+
+
+script._chat = fake_chat
+script.available = lambda: True
+main.script.available = script.available
+
 # Test-only pages (preview vs export comparison) at /__parity/.
 from fastapi.staticfiles import StaticFiles  # noqa: E402
 

@@ -177,6 +177,81 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// The Fastrr brand kit, checking doubtful words, changing the script, and
+// autosave: reload the page and continue where you left off.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
+  const errors = [], missing = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  // a saved project's server copy may have expired: that 404 is expected
+  page.on('response', (r) => { if (r.status() === 404 && !/\/api\/jobs\//.test(r.url())) missing.push(r.url()); });
+  const store = () => page.evaluate(async () => (await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'))).state);
+  const text = async () => (await store()).captions.map((c) => c.words.map((w) => w.text).join(' ')).join(' | ');
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 120000 });
+    await page.click('.rail button[data-tool="templates"]');
+    const firstStyle = await page.locator('.tpl').first().getAttribute('data-id');
+    if (firstStyle !== 'fastrr-bold') throw new Error(`brand kit not first (${firstStyle})`);
+    await page.click('.tpl[data-id="fastrr-marker"]');
+
+    // two unsure words (the stand-in transcriber flags them): one checked, the rest "All good"
+    await page.click('.rail button[data-tool="captions"]');
+    if (!/2 words to check/.test(await page.locator('.review').innerText())) throw new Error('review bar missing');
+    await page.click('.review .btn.primary');
+    if (!/1 word to check/.test(await page.locator('.review').innerText())) throw new Error('"Looks right" did not clear the word');
+    // glossary near misses, one word and two
+    const box = page.locator('.cap textarea').first();
+    await box.fill('Hey faster everyone, ship rocket');
+    await box.press('Enter');
+    if (!/Fastrr/.test(await page.locator('.review-q').innerText())) throw new Error('no Fastrr suggestion');
+    await page.click('.review .btn.primary');
+    if (!/Shiprocket/.test(await page.locator('.review-q').innerText())) throw new Error('no Shiprocket suggestion');
+    await page.click('.review .btn.primary');
+    await page.click('.review button:has-text("All good")');
+    if (await page.locator('.review').count()) throw new Error('review bar still shown');
+    if (!(await text()).startsWith('Hey Fastrr everyone, Shiprocket')) throw new Error(`suggestions not applied: ${(await text()).slice(0, 60)}`);
+
+    // script: Roman, then Devanagari and English (stand-in text model), then undo
+    await page.click('[aria-label="Caption script"] button[data-mode="roman"]');
+    await page.waitForTimeout(600);
+    if (!/bahut aasaan/.test(await text())) throw new Error(`roman: ${await text()}`);
+    await page.click('[aria-label="Caption script"] button[data-mode="devanagari"]');
+    await page.waitForTimeout(600);
+    if (!/बहुत/.test(await text())) throw new Error('devanagari not applied');
+    await page.click('[aria-label="Caption script"] button[data-mode="english"]');
+    await page.waitForTimeout(600);
+    if (!(await text()).startsWith('EN ')) throw new Error('english not applied');
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(300);
+    if ((await text()).includes('EN ')) throw new Error('undo did not restore');
+
+    // autosave: reload, continue, same captions and style; a server export still works
+    await page.waitForTimeout(1500);
+    const before = await text();
+    await page.reload();
+    await page.waitForSelector('.recent-item', { timeout: 10000 });
+    await page.click('.recent-open');
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 30000 });
+    const s = await store();
+    if ((await text()) !== before) throw new Error('captions not restored');
+    if (s.templateId !== 'fastrr-marker') throw new Error(`style not restored (${s.templateId})`);
+    await page.click('#export-btn');
+    await page.check('input[name="export-kind"][value="soft"]');
+    await page.click('#export-dialog .btn.brand');
+    await page.waitForSelector('#export-status a.btn', { timeout: 120000 });
+    if (missing.length) throw new Error(`missing files: ${[...new Set(missing)].slice(0, 3).join(', ')}`);
+    if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
+    console.log('✓ brand kit first, words to check and glossary suggestions, script switch with undo, autosave and resume (server export re-sends the video)');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-autosave.png') }).catch(() => {});
+    fail('brand kit / review / script / autosave', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // Undo/redo, and the style showcase on the first page.
 {
   const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });

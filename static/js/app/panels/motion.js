@@ -18,7 +18,7 @@ function presetGrid(ctrls, key, presets) {
 
 let replayHook = null;
 export function setReplay(fn) { replayHook = fn; }
-const replay = () => replayHook?.();
+export const replay = () => replayHook?.();
 
 export const motionPanel = stylePanel({
   title: 'Motion',

@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import auth, media, transcribe
+from . import auth, media, script, transcribe
 from .fonts import FONTS_DIR, catalogue
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -229,6 +229,19 @@ def login_page():
 # ------------------------------------------------------------------ config
 
 
+def load_glossary() -> list[str]:
+    """The team glossary (server/glossary.txt): one term per line, # for comments."""
+    path = pathlib.Path(__file__).parent / "glossary.txt"
+    try:
+        lines = path.read_text(encoding="utf-8").splitlines()
+    except OSError:
+        return []
+    return [ln.strip() for ln in lines if ln.strip() and not ln.strip().startswith("#")][:200]
+
+
+GLOSSARY = load_glossary()
+
+
 @app.get("/api/config")
 def config():
     return {
@@ -241,6 +254,8 @@ def config():
         "lowPower": media.LOW_POWER,
         "maxBurnPixels": media.MAX_BURN_PIXELS,
         "retention": {"jobTtlMin": JOB_TTL_MIN, "downloadGraceMin": DOWNLOAD_GRACE_MIN},
+        "glossary": GLOSSARY,
+        "scriptConvert": script.available(),
     }
 
 
@@ -379,7 +394,7 @@ def _run_transcription(job: Job, req: TranscribeReq) -> None:
             job.touched = time.time()
 
         job.transcript = transcribe.transcribe(str(audio), job.info["duration"], req.language,
-                                               req.vocabulary, progress)
+                                               req.vocabulary, progress, glossary=GLOSSARY)
         task.progress, task.status = 1.0, "done"
     except Exception as e:  # noqa: BLE001 - surfaced to the editor
         log.exception("transcription failed for job %s", job.id)
@@ -387,6 +402,28 @@ def _run_transcription(job: Job, req: TranscribeReq) -> None:
     finally:
         task.finished = time.time()
         audio.unlink(missing_ok=True)
+
+
+# ---------------------------------------------------------------- script
+
+
+class ConvertItem(BaseModel):
+    id: str = Field(..., max_length=64)
+    words: list[str] = Field(..., max_length=200)
+
+
+class ConvertReq(BaseModel):
+    mode: str = Field(..., pattern="^(roman|devanagari|english)$")
+    items: list[ConvertItem] = Field(..., max_length=3000)
+
+
+@app.post("/api/convert")
+def convert_script(req: ConvertReq):
+    """Rewrite caption words in another script, or translate them to English."""
+    try:
+        return {"items": script.convert(req.mode, [i.model_dump() for i in req.items], GLOSSARY)}
+    except script.ScriptError as e:
+        raise HTTPException(503, str(e))
 
 
 # ---------------------------------------------------------------- render

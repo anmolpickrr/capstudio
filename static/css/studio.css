@@ -1,12 +1,12 @@
 /* Caption Studio — design system and layout.
    All colour, type and radius decisions live in the tokens below. */
 
-@font-face { font-family: "UI"; src: url("../../fonts/Figtree-Regular.ttf"); font-weight: 400; font-display: swap; }
-@font-face { font-family: "UI"; src: url("../../fonts/Figtree-Medium.ttf"); font-weight: 500; font-display: swap; }
-@font-face { font-family: "UI"; src: url("../../fonts/Figtree-SemiBold.ttf"); font-weight: 600; font-display: swap; }
-@font-face { font-family: "UI"; src: url("../../fonts/Figtree-Bold.ttf"); font-weight: 700; font-display: swap; }
-@font-face { font-family: "UI Display"; src: url("../../fonts/Outfit-Medium.ttf"); font-weight: 500 600; font-display: swap; }
-@font-face { font-family: "UI Display"; src: url("../../fonts/Outfit-Bold.ttf"); font-weight: 700 800; font-display: swap; }
+@font-face { font-family: "UI"; src: url("/fonts/Figtree-Regular.ttf"); font-weight: 400; font-display: swap; }
+@font-face { font-family: "UI"; src: url("/fonts/Figtree-Medium.ttf"); font-weight: 500; font-display: swap; }
+@font-face { font-family: "UI"; src: url("/fonts/Figtree-SemiBold.ttf"); font-weight: 600; font-display: swap; }
+@font-face { font-family: "UI"; src: url("/fonts/Figtree-Bold.ttf"); font-weight: 700; font-display: swap; }
+@font-face { font-family: "UI Display"; src: url("/fonts/Outfit-Medium.ttf"); font-weight: 500 600; font-display: swap; }
+@font-face { font-family: "UI Display"; src: url("/fonts/Outfit-Bold.ttf"); font-weight: 700 800; font-display: swap; }
 
 :root {
   /* surfaces: near-black canvas with floating cards, so footage reads true */
@@ -174,19 +174,19 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 /* ------------------------------------------------------------ empty / upload */
 .studio { display: grid; min-height: 0; height: 100%; }
 /* first page --------------------------------------------------------------- */
-@font-face { font-family: "Show Pop"; src: url("../../fonts/Anton-Regular.ttf"); font-display: swap; }
-@font-face { font-family: "Show Serif"; src: url("../../fonts/DMSerifDisplay-Italic.ttf"); font-display: swap; }
-@font-face { font-family: "Show Hand"; src: url("../../fonts/Caveat-Bold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Heavy"; src: url("../../fonts/Poppins-Black.ttf"); font-display: swap; }
-@font-face { font-family: "Show Deva"; src: url("../../fonts/Baloo2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Taml"; src: url("../../fonts/BalooThambi2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Telu"; src: url("../../fonts/BalooTammudu2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Beng"; src: url("../../fonts/BalooDa2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Gujr"; src: url("../../fonts/BalooBhai2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Knda"; src: url("../../fonts/BalooTamma2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Mlym"; src: url("../../fonts/BalooChettan2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Guru"; src: url("../../fonts/BalooPaaji2-ExtraBold.ttf"); font-display: swap; }
-@font-face { font-family: "Show Arab"; src: url("../../fonts/NotoSansArabic-Bold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Pop"; src: url("/fonts/Anton-Regular.ttf"); font-display: swap; }
+@font-face { font-family: "Show Serif"; src: url("/fonts/DMSerifDisplay-Italic.ttf"); font-display: swap; }
+@font-face { font-family: "Show Hand"; src: url("/fonts/Caveat-Bold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Heavy"; src: url("/fonts/Poppins-Black.ttf"); font-display: swap; }
+@font-face { font-family: "Show Deva"; src: url("/fonts/Baloo2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Taml"; src: url("/fonts/BalooThambi2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Telu"; src: url("/fonts/BalooTammudu2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Beng"; src: url("/fonts/BalooDa2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Gujr"; src: url("/fonts/BalooBhai2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Knda"; src: url("/fonts/BalooTamma2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Mlym"; src: url("/fonts/BalooChettan2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Guru"; src: url("/fonts/BalooPaaji2-ExtraBold.ttf"); font-display: swap; }
+@font-face { font-family: "Show Arab"; src: url("/fonts/NotoSansArabic-Bold.ttf"); font-display: swap; }
 
 .welcome { overflow-x: hidden; overflow-y: auto; position: relative; background: var(--bg-0); }
 .welcome::before {
@@ -576,9 +576,10 @@ details.more > .more-body { display: grid; gap: 12px; margin-top: 12px; }
 .tpl .meta small { font-size: 11px; color: var(--text-3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .tpl .meta b { display: flex; align-items: center; gap: 6px; }
 .tpl-badge { font: 700 9px/1 var(--font); font-style: normal; letter-spacing: .05em; text-transform: uppercase; padding: 3px 6px; border-radius: 999px; background: var(--accent-soft); color: var(--accent-hover); }
-.tpl-group h4.trending { color: var(--accent-hover); }
-.chip-trending { border-color: var(--accent-line); color: var(--accent-hover); }
-.chip-trending[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.tpl-group h4.badged { color: var(--accent-hover); }
+.chip-badged { border-color: var(--accent-line); color: var(--accent-hover); }
+.chip-badged[aria-pressed="true"] { background: var(--brand); border-color: var(--brand); color: #fff; }
+.tpl-badge.brand { background: var(--brand); color: #fff; }
 .tpl .check { position: absolute; top: 6px; right: 6px; width: 20px; height: 20px; border-radius: 50%; background: #fff; display: none; place-items: center; z-index: 2; }
 .tpl[aria-pressed="true"] .check { display: grid; }
 .tpl .check svg { width: 12px; height: 12px; stroke: #0a0a0a; stroke-width: 3; }
@@ -703,3 +704,24 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .wm-card.dark .wm-thumb { background: linear-gradient(160deg, #f4f2ee, #d9d6cf); }
 .wm-thumb img { width: 100%; height: 100%; object-fit: contain; }
 .frame .watermark { position: absolute; pointer-events: none; user-select: none; }
+
+/* ---------------------------------------------------------------- checking captions */
+.word.name-hint { text-decoration: underline dotted var(--accent-hover); text-underline-offset: 3px; }
+.word.reviewing { border-color: var(--accent); box-shadow: 0 0 0 1px var(--accent); color: var(--text); }
+.review { display: grid; gap: 8px; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--accent-line); background: var(--accent-soft); }
+.review-head, .review-actions { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.review-head .grow, .review-actions .grow { flex: 1; }
+.review-q { margin: 0; font-size: 13px; color: var(--text-2); }
+.review-q b { color: var(--text); }
+
+/* ---------------------------------------------------------------- recent projects */
+.recent { display: grid; gap: 8px; margin-top: 22px; max-width: 520px; }
+.recent-title { font-size: 12px; font-weight: 600; color: var(--text-3); text-transform: uppercase; letter-spacing: .06em; }
+.recent-item { display: flex; align-items: center; gap: 6px; border: 1px solid var(--line); border-radius: var(--r-sm); background: rgba(255, 255, 255, .025); }
+.recent-item:hover { border-color: var(--line-2); background: rgba(255, 255, 255, .04); }
+.recent-open { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px; padding: 8px 10px; border: 0; background: none; color: var(--text); text-align: left; cursor: pointer; }
+.recent-thumb { flex: none; width: 44px; height: 44px; border-radius: 8px; background: var(--bg-3) center / cover no-repeat; }
+.recent-text { display: grid; gap: 2px; min-width: 0; }
+.recent-text b { font-size: 13.5px; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.recent-text small { font-size: 12px; color: var(--text-3); }
+.recent-remove { margin-right: 6px; }

@@ -5,7 +5,8 @@
 import { withDefaults } from './base.js';
 
 export const CATEGORIES = [
-  { id: 'trending', name: 'Trending', badge: true },
+  { id: 'brand', name: 'Fastrr', badge: 'Brand' },
+  { id: 'trending', name: 'Trending', badge: 'Trending' },
   { id: 'kinetic', name: 'Kinetic typography' },
   { id: 'creator', name: 'Creator & influencer' },
   { id: 'bold', name: 'Bold social' },
@@ -23,6 +24,31 @@ export const CATEGORIES = [
 const T = (id, name, category, note, style) => ({ id, name, category, note, style: withDefaults(style) });
 
 export const TEMPLATES = [
+  // Fastrr brand kit: the brand's purple (#6037D7) and lavender (#B9A6FF), and the
+  // logo's bold italic Poppins. Pinned first for every editor.
+  T('fastrr-bold', 'Fastrr Bold', 'brand', 'Logo italic caps, the keyword in Fastrr lavender', {
+    font: 'Poppins-ExtraBoldItalic', size: 104, textCase: 'upper', punctuation: 'strip', lineHeight: 0.96, align: 'keyword',
+    emphasis: 'auto', emphLine: true, emphScale: 1.45, emphColor: '#B9A6FF',
+    shadowY: 6, shadowBlur: 14, shadowOpacity: 0.6, animIn: 'pop',
+    maxWords: 4, maxLines: 3, width: 88, vPos: 'middle', vOffset: 12,
+  }),
+  T('fastrr-marker', 'Fastrr Marker', 'brand', 'Clean lead-in, keyword on a Fastrr purple marker', {
+    font: 'Inter-Bold', size: 84, letterSpacing: -2, lineHeight: 1.06, align: 'keyword',
+    emphasis: 'auto', emphLine: true, emphScale: 1.55, emphFont: 'Poppins-ExtraBoldItalic', emphColor: '#FFFFFF',
+    emphBg: true, emphBgColor: '#6037D7', bgRadius: 14, bgPadX: 18, bgPadY: 0,
+    shadowY: 4, shadowBlur: 14, shadowOpacity: 0.5, reveal: true, wordIn: 'rise',
+    maxWords: 4, maxLines: 3, width: 86, vPos: 'middle', vOffset: 10,
+  }),
+  T('fastrr-pill', 'Fastrr Pill', 'brand', 'The spoken word rides a Fastrr purple pill', {
+    font: 'Poppins-Bold', size: 72, highlight: 'pill', hlBgColor: '#6037D7', hlColor: '#FFFFFF', hlScale: 1.06,
+    bgRadius: 20, bgPadX: 14, bgPadY: 4, shadowY: 4, shadowBlur: 10, shadowOpacity: 0.5,
+    maxWords: 4, vPos: 'bottom', vOffset: 24, width: 86,
+  }),
+  T('fastrr-clean', 'Fastrr Clean', 'brand', 'Quiet and readable, the spoken word in lavender', {
+    font: 'Inter-Bold', size: 62, highlight: 'color', hlColor: '#B9A6FF',
+    shadowY: 3, shadowBlur: 10, shadowOpacity: 0.55, maxWords: 6, vPos: 'bottom', vOffset: 16, width: 82,
+  }),
+
   // Trending: the looks top creators use right now. A small lead-in over one big
   // keyword, mixed fonts, words that build up as they're spoken, soft glow.
   T('two-tier', 'Two-tier', 'trending', 'Lead-in framing a big lime keyword', {

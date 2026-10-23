@@ -104,11 +104,13 @@ function card(tpl) {
     onmouseleave: () => { const c = cards.get(tpl.id); if (c) { c.playing = false; renderCard(tpl.id); } },
     onfocus: () => animate(tpl.id), onblur: () => { const c = cards.get(tpl.id); if (c) c.playing = false; } },
   h('span', { class: 'check', html: icon('check') }), thumb,
-  h('span', { class: 'meta' }, h('b', {}, tpl.name, tpl.category === 'trending' ? h('i', { class: 'tpl-badge' }, 'Trending') : null), h('small', {}, tpl.note)));
+  h('span', { class: 'meta' }, h('b', {}, tpl.name, badgeOf(tpl) ? h('i', { class: `tpl-badge ${tpl.category}` }, badgeOf(tpl)) : null), h('small', {}, tpl.note)));
   cards.set(tpl.id, { el, renderer: new SvgRenderer(svg), rendered: false });
   observer.observe(el);
   return el;
 }
+
+const badgeOf = (tpl) => CATEGORIES.find((c) => c.id === tpl.category)?.badge || null;
 
 function renderGrid() {
   cards.clear();
@@ -130,7 +132,7 @@ function renderGrid() {
     return;
   }
   grid.replaceChildren(...groups.map((g) => h('div', { class: 'tpl-group' },
-    category === 'all' ? h('h4', { class: g.badge ? 'trending' : null }, g.name) : null,
+    category === 'all' ? h('h4', { class: g.badge ? `badged ${g.id}` : null }, g.id === 'brand' ? 'Fastrr brand kit' : g.name) : null,
     h('div', { class: 'tpl-grid' }, g.items.map(card)))));
   markSelected();
 }
@@ -141,7 +143,7 @@ export const templatesPanel = {
     search.addEventListener('input', () => { query = search.value; renderGrid(); });
     const chips = h('div', { class: 'chips', role: 'group', 'aria-label': 'Categories' },
       [{ id: 'all', name: 'All' }, ...CATEGORIES].map((c) => h('button', {
-        class: `chip${c.badge ? ' chip-trending' : ''}`, type: 'button', 'aria-pressed': String(c.id === category),
+        class: `chip${c.badge ? ` chip-badged ${c.id}` : ''}`, type: 'button', 'aria-pressed': String(c.id === category),
         onclick: (e) => {
           category = c.id;
           chips.querySelectorAll('.chip').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget)));

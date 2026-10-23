@@ -5,7 +5,8 @@ import { openExport } from './export.js';
 import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
-import { engine, leaveProject, startUpload, syncEngine } from './session.js';
+import { engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
+import { listProjects, removeProject } from './saved.js';
 import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
 import { Timeline } from './timeline.js';
@@ -114,7 +115,7 @@ function welcome() {
             h('span', {}, 'Captions that ', h('span', { class: 't-pop' }, 'POP'), ','),
             h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
           h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
-          upload),
+          upload, recentList()),
         h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
       ticker,
       h('section', { class: 'looks' },
@@ -135,6 +136,49 @@ function welcome() {
     if (f) startUpload(f);
   });
   return page;
+}
+
+// Projects saved in this browser, newest first, to pick up where you left off.
+const ago = (t) => {
+  const m = Math.round((Date.now() - t) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const hrs = Math.round(m / 60);
+  return hrs < 24 ? `${hrs} h ago` : `${Math.round(hrs / 24)} d ago`;
+};
+
+// When the video couldn't be kept in the browser, ask for the same file again.
+function pickAgain(record) {
+  return new Promise((resolve) => {
+    toast(`Pick “${record.name}” again to continue (it was too large to keep in the browser).`, 'info', 6000);
+    const input = h('input', { type: 'file', accept: 'video/*,.mov,.mkv,.mxf', hidden: true });
+    input.addEventListener('change', () => resolve(input.files[0] || null));
+    input.addEventListener('cancel', () => resolve(null));
+    document.body.append(input);
+    input.click();
+    setTimeout(() => input.remove(), 60000);
+  });
+}
+
+function recentList() {
+  const box = h('div', { class: 'recent', hidden: true });
+  const fill = async () => {
+    const items = (await listProjects()).slice(0, 3);
+    box.hidden = !items.length;
+    box.replaceChildren(h('span', { class: 'recent-title' }, 'Continue where you left off'),
+      ...items.map((p) => {
+        const row = h('div', { class: 'recent-item' },
+          h('button', { class: 'recent-open', type: 'button', 'aria-label': `Continue ${p.name}`, onclick: () => resumeProject(p.id, pickAgain) },
+            h('span', { class: 'recent-thumb', style: p.thumb ? { backgroundImage: `url(${p.thumb})` } : null }),
+            h('span', { class: 'recent-text' }, h('b', {}, p.name),
+              h('small', {}, `${p.captions?.length || 0} captions · ${ago(p.savedAt)}`))),
+          h('button', { class: 'btn ghost sm icon-only recent-remove', type: 'button', 'aria-label': `Remove ${p.name}`, 'data-tip': 'Remove from this browser',
+            html: icon('close'), onclick: async () => { await removeProject(p.id); fill(); } }));
+        return row;
+      }));
+  };
+  fill();
+  return box;
 }
 
 // ---------------------------------------------------------------- live preview
@@ -208,9 +252,11 @@ function editor() {
 }
 
 async function newVideo() {
-  if (state.captions.length && !state.project?.exported
+  if (state.captions.length && !state.project?.exported && !state.project?.saved
     && !window.confirm('Start a new video? Your current captions will be discarded and the files deleted.')) return;
+  const saved = state.project?.saved;
   await leaveProject();
+  if (saved) toast('Saved. Pick it up again under “Continue where you left off”.', 'ok', 4000);
 }
 
 let lastTool = null;
@@ -224,7 +270,7 @@ function refreshEditor(what) {
     : 'Uploading…';
   $('#undo').disabled = !canUndo();
   $('#redo').disabled = !canRedo();
-  $('#export-btn').disabled = !(state.phase === 'editing' && state.captions.length && p.job);
+  $('#export-btn').disabled = !(state.phase === 'editing' && state.captions.length && (p.job || p.file));
   document.querySelectorAll('.rail button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tool === state.tool)));
   renderFlow();
   if (state.tool !== lastTool || what === 'project' || what === 'tool' || !$('#panel').firstChild) {

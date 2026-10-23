@@ -102,14 +102,19 @@ export class Timeline {
 
   refresh(what) {
     if (!what || ['captions', 'project', 'selection', 'active', 'style', 'history'].includes(what)) this.layout();
-    if (state.project?.job && this.waveJob !== state.project.job) this.loadWave(state.project.job);
+    if (state.project?.job && this.waveJob !== state.project.job && !state.project.peaks) this.loadWave(state.project.job);
+    else if (state.project?.peaks && this.peaks !== state.project.peaks) { this.peaks = state.project.peaks; this.drawWave(); }
   }
 
   async loadWave(job) {
     this.waveJob = job;
     try {
       const w = await api(`/api/jobs/${job}/waveform`);
-      if (this.waveJob === job) { this.peaks = w; this.drawWave(); }
+      if (this.waveJob === job) {
+        this.peaks = w;
+        if (state.project) state.project.peaks = w; // saved with the project
+        this.drawWave();
+      }
     } catch { /* waveform is optional */ }
   }
 

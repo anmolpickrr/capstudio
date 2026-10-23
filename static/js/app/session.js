@@ -4,8 +4,9 @@ import { ensureFonts } from '../engine/fonts.js';
 import { CaptionEngine } from '../engine/index.js';
 import { fitsCaption, fontsFor } from '../engine/layout.js';
 import { api, deleteJob, sleep, upload } from './api.js';
+import { loadProject, newId, saveFile, saveProject } from './saved.js';
 import { DEFAULT_TEMPLATE, templateById } from '../templates/library.js';
-import { clearHistory, emit, set, state } from './store.js';
+import { clearHistory, emit, set, state, subscribe } from './store.js';
 import { toast } from './ui.js';
 
 export const engine = new CaptionEngine();
@@ -50,11 +51,13 @@ export async function startUpload(file) {
   const id = ++runId;
   firstStyle();
   set({
-    project: { kind: 'upload', name: file.name, file, src: URL.createObjectURL(file), info: null, job: null },
+    project: { kind: 'upload', name: file.name, file, src: URL.createObjectURL(file), info: null, job: null, saveId: newId() },
     phase: 'uploading', captions: [], transcript: null, selected: null,
     progress: { upload: 0, transcribe: 0, message: 'Uploading your video…' },
   }, 'project');
   clearHistory();
+  const saveId = state.project.saveId;
+  saveFile(saveId, file).then((ok) => { if (state.project?.saveId === saveId) state.project.fileSaved = ok; });
   try {
     uploadReq = upload(file, (p) => {
       state.progress.upload = p;
@@ -80,9 +83,9 @@ export async function startUpload(file) {
 }
 
 export async function generate(id = ++runId, { language = state.language, vocabulary = state.vocabulary } = {}) {
-  const jobId = state.project.job;
   set({ phase: 'generating', progress: { ...state.progress, transcribe: 0, message: 'Listening to your video…' } }, 'project');
   try {
+    const jobId = await ensureJob();
     await api(`/api/jobs/${jobId}/transcribe`, { method: 'POST', body: { language, vocabulary } });
     let t;
     for (;;) {
@@ -144,4 +147,83 @@ export async function leaveProject({ beacon = false } = {}) {
     set({ project: null, phase: 'empty', captions: [], transcript: null, selected: null }, 'project');
     clearHistory();
   }
+}
+
+// ---------------------------------------------------------------- autosave & resume
+
+// What's saved for a project; the video is stored separately, once.
+function snapshot() {
+  const p = state.project;
+  const { words, ...transcript } = state.transcript || {}; // words live in the captions
+  return {
+    id: p.saveId, name: p.name, size: p.file?.size || 0, type: p.file?.type || '', info: p.info, job: p.job,
+    captions: state.captions, style: state.style, templateId: state.templateId,
+    transcript: state.transcript ? transcript : null, language: state.language, vocabulary: state.vocabulary,
+    thumb: state.frameThumb || p.thumb || null, peaks: p.peaks || null,
+  };
+}
+
+let saveTimer = 0;
+subscribe((what) => {
+  if (!['captions', 'style', 'history', 'transcript', 'project', 'thumb'].includes(what)) return;
+  const p = state.project;
+  if (!p?.saveId || !p.info || state.phase !== 'editing' || !state.captions.length) return;
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(async () => {
+    if (state.project !== p) return;
+    if (await saveProject(snapshot())) { p.saved = true; emit('saved'); }
+  }, 800);
+});
+
+// Pick a saved project up again. The video comes from this browser's storage (or,
+// if it couldn't be stored, from the file the editor picks again).
+export async function resumeProject(id, pickFile) {
+  const saved = await loadProject(id);
+  if (!saved) return toast('That project is no longer saved in this browser.', 'error');
+  const { record } = saved;
+  let file = saved.file;
+  if (!file) {
+    file = await pickFile?.(record);
+    if (!file) return;
+    if (file.name !== record.name || file.size !== record.size) {
+      return toast(`That isn’t the same video. Pick “${record.name}” to continue.`, 'error', 8000);
+    }
+    saveFile(id, file);
+  }
+  await leaveProject();
+  runId++;
+  set({
+    project: { kind: 'upload', name: record.name, file, src: URL.createObjectURL(file), info: record.info, job: null,
+      savedJob: record.job, saveId: id, saved: true, fileSaved: true, peaks: record.peaks, thumb: record.thumb },
+    phase: 'editing', captions: record.captions, style: record.style, templateId: record.templateId,
+    transcript: record.transcript, language: record.language || state.language, vocabulary: record.vocabulary || '',
+    selected: null, progress: { upload: 1, transcribe: 1, message: '' },
+  }, 'project');
+  clearHistory();
+  emit('captions');
+  toast(`Welcome back to ${record.name}.`, 'ok', 2500);
+}
+
+// The server's copy of the video, for the jobs only the server can do (writing
+// captions again, server exports, a playable preview). A resumed project's copy
+// has usually expired: it's sent again, once, when first needed.
+let sending = null;
+export async function ensureJob() {
+  const p = state.project;
+  if (!p) throw new Error('No video is open.');
+  if (p.job) return p.job;
+  if (p.savedJob) {
+    const old = p.savedJob;
+    p.savedJob = null;
+    try { await api(`/api/jobs/${old}`); p.job = old; emit('project'); return old; } catch { /* expired */ }
+  }
+  if (!p.file) throw new Error('The video isn’t available in this tab.');
+  if (!sending) {
+    toast('Sending the video to the server first…', 'info', 4000);
+    sending = upload(p.file, () => {}).then((job) => {
+      if (state.project === p) { p.job = job.id; emit('project'); }
+      return job.id;
+    }).finally(() => { sending = null; });
+  }
+  return sending;
 }

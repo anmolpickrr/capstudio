@@ -40,7 +40,7 @@ function route() {
 
 window.addEventListener('pagehide', () => { if (state.project?.kind) leaveProject({ beacon: true }); });
 window.addEventListener('beforeunload', (e) => {
-  if (state.project && state.captions.length && !state.project.exported) { e.preventDefault(); e.returnValue = ''; }
+  if (state.project && state.captions.length && !state.project.exported && !state.project.saved) { e.preventDefault(); e.returnValue = ''; }
 });
 
 // The address the team uses. GitHub Pages only hosts these files, without the server

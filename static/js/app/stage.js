@@ -3,7 +3,7 @@
 import { SvgRenderer } from '../engine/index.js';
 import { watermarkFile, watermarkRect } from '../engine/watermark.js';
 import { icon } from './icons.js';
-import { engine } from './session.js';
+import { engine, ensureJob } from './session.js';
 import { editCaption } from './captionops.js';
 import { check, fitStyle, renderOverlay, zoneById, zoneFits, ZONES } from './safezones.js';
 import { emit, setStyle, state } from './store.js';
@@ -100,9 +100,10 @@ export class Stage {
   }
 
   async useProxy() {
-    const job = state.project?.job;
-    if (this.proxyTried || !job) return;
+    if (this.proxyTried || !state.project) return;
     this.proxyTried = true;
+    let job;
+    try { job = await ensureJob(); } catch { return; }
     this.src = `/api/jobs/${job}/proxy`;
     this.video.src = this.src;
   }

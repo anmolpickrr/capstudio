@@ -6,6 +6,7 @@ import { toASS, toSRT, toTXT, toVTT } from '../engine/index.js';
 import { ensureFonts } from '../engine/fonts.js';
 import { fontsFor } from '../engine/layout.js';
 import { api, sleep } from './api.js';
+import { ensureJob } from './session.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { exportOverlay } from './overlayexport.js';
 import { icon } from './icons.js';
@@ -87,7 +88,7 @@ export function openExport() {
     const cancel = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
       cancelled = true;
       local.abort();
-      await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
+      if (state.project.job) await api(`/api/jobs/${state.project.job}/render/cancel`, { method: 'POST' }).catch(() => {});
     } }, 'Cancel');
     status.replaceChildren(h('div', { class: 'result' },
       h('div', { class: 'result-row' }, h('b', {}, { burn: 'Rendering your video', overlay: 'Drawing the captions', soft: 'Adding the subtitle track' }[kind]), cancel),
@@ -138,6 +139,9 @@ export function openExport() {
       const body = kind === 'burn'
         ? { mode: 'burn', quality, watermark: state.watermark.on ? state.watermark : null, ass_gz: await gzipBase64(toASS(state.captions, state.style, W, H, { spaced: spaced() })) }
         : { mode: 'soft', srt: toSRT(state.captions, state.style, W, H, spaced()), language: state.transcript?.language || 'und' };
+      msg.textContent = 'Preparing…';
+      await ensureJob();
+      if (cancelled) { msg.textContent = 'Export cancelled.'; return; }
       await api(`/api/jobs/${state.project.job}/render`, { method: 'POST', body });
       for (;;) {
         await sleep(700);
@@ -169,7 +173,7 @@ export function openExport() {
         state.project.exported = true;
         emit('project');
         // made in the browser: tell the server, which then deletes the upload soon
-        if (rr.href) api(`/api/jobs/${state.project.job}/downloaded`, { method: 'POST' }).catch(() => {});
+        if (rr.href && state.project.job) api(`/api/jobs/${state.project.job}/downloaded`, { method: 'POST' }).catch(() => {});
       } });
     status.replaceChildren(h('div', { class: 'result ok' },
       h('div', { class: 'result-row' }, h('div', {}, h('b', {}, rr.overlay ? 'Your captions are ready' : 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a),

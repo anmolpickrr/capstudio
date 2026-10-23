@@ -104,14 +104,23 @@ class TranscriptionError(RuntimeError):
 
 
 def transcribe(audio_path: str, duration: float, lang_id: str, vocabulary: str,
-               progress: ProgressCb) -> dict:
+               progress: ProgressCb, glossary: list[str] | None = None) -> dict:
     if lang_id not in LANG_INDEX:
         raise TranscriptionError(f"Unsupported language: {lang_id}")
     code, _ = LANG_INDEX[lang_id]
     vocab = [v.strip() for v in re.split(r"[,\n]", vocabulary or "") if v.strip()][:100]
+    # the editor's own names first, then the team glossary, within the prompt's budget
+    seen = {v.lower() for v in vocab}
+    vocab += [g for g in glossary or [] if g.lower() not in seen]
     prompt = PROMPTS.get(lang_id, "")
     if vocab:
-        prompt = (prompt + " " + ", ".join(vocab) + ".").strip()
+        terms, size = [], 0
+        for v in vocab:
+            if size + len(v) > 360:
+                break
+            terms.append(v)
+            size += len(v) + 2
+        prompt = (prompt + " " + ", ".join(terms) + ".").strip()
 
     engine = ENGINE
     if engine in HOSTED:
@@ -135,6 +144,8 @@ def transcribe(audio_path: str, duration: float, lang_id: str, vocabulary: str,
     if lang_id == "hinglish-roman":
         for w in words:
             w["text"] = romanize_devanagari(w["text"])
+    if glossary:
+        fix_glossary_case(words, glossary)
     words = [w for w in words if w["text"]]
     _fix_overlaps(words)
     return {
@@ -146,6 +157,18 @@ def transcribe(audio_path: str, duration: float, lang_id: str, vocabulary: str,
         "fallback": engine != ENGINE,
         "words": words,
     }
+
+
+def fix_glossary_case(words: list[dict], glossary: list[str]) -> None:
+    """Glossary terms heard right but written in the wrong case get the team's
+    spelling: "shiprocket," -> "Shiprocket,", "upi" -> "UPI"."""
+    terms = {g.lower(): g for g in glossary if " " not in g}
+    for w in words:
+        m = re.match(r"^(\W*)(.*?)(\W*)$", w["text"])
+        core = m.group(2) if m else w["text"]
+        term = terms.get(core.lower())
+        if term and core != term:
+            w["text"] = f"{m.group(1)}{term}{m.group(3)}"
 
 
 def _fix_overlaps(words: list[dict]) -> None:

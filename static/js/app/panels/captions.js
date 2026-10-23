@@ -1,13 +1,19 @@
-// Captions: the language, and every caption's text and timing. Click a word to
-// star it for keyword emphasis; underlined words are ones the speech engine
-// wasn't sure about.
+// Captions: the language and script, a check of doubtful words, and every
+// caption's text and timing. Click a word to star it for keyword emphasis;
+// underlined words are ones the speech engine wasn't sure about, and dotted
+// ones look like a misspelt team glossary name.
 import { retext, retime, uid } from '../../engine/chunk.js';
+import { api } from '../api.js';
 import { icon } from '../icons.js';
+import { applyHint, glossaryHint, isHindiProject, isUnsure, rebuild, toCheck } from '../review.js';
 import { generate } from '../session.js';
+import { replay } from './motion.js';
 import { emit, setCaptions, set, state } from '../store.js';
 import { fmtTime, h, more, parseTime, section, toast } from '../ui.js';
 
 let root = null, list = null, seek = null;
+let cursor = 0; // position in the list of words to check
+let reviewing = null; // the word being checked
 export function setSeek(fn) { seek = fn; }
 
 const langLabel = (code) => { try { return new Intl.DisplayNames(['en'], { type: 'language' }).of(code); } catch { return code; } };
@@ -24,7 +30,7 @@ function languageSection() {
   sel.addEventListener('change', () => set({ language: sel.value }));
   const vocab = h('input', { class: 'input', placeholder: 'Brand or people names, comma-separated', value: state.vocabulary });
   vocab.addEventListener('input', () => set({ vocabulary: vocab.value }));
-  const regen = h('button', { class: 'btn', type: 'button', disabled: !state.project?.job ? true : null, html: `<span>Generate again</span>`,
+  const regen = h('button', { class: 'btn', type: 'button', disabled: !(state.project?.job || state.project?.file) ? true : null, html: `<span>Generate again</span>`,
     onclick: async () => {
       if (state.captions.length && !window.confirm('Generate captions again? Your caption edits will be replaced (styles are kept).')) return;
       await generate(undefined, { language: sel.value, vocabulary: vocab.value });
@@ -37,7 +43,90 @@ function languageSection() {
     more('Change language or improve accuracy',
       h('label', { class: 'field' }, h('span', { class: 'label' }, 'Spoken language'), sel),
       h('label', { class: 'field' }, h('span', { class: 'label' }, 'Names & terms'), vocab),
+      state.config.glossary?.length ? h('p', { class: 'hint' }, `Always included from the team glossary: ${state.config.glossary.join(', ')}.`) : null,
       regen));
+}
+
+// ---------------------------------------------------------------- script
+
+const SCRIPTS = [
+  ['roman', 'Roman', 'aaj ka offer'],
+  ['devanagari', 'हिंदी', 'आज का offer'],
+  ['english', 'English', 'Translate to English'],
+];
+
+function scriptSection() {
+  if (!isHindiProject()) return null;
+  const note = h('p', { class: 'hint' }, 'Rewrites every caption. Ctrl+Z puts it back.');
+  const seg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Caption script' }, SCRIPTS.map(([mode, label, tip]) => {
+    const needsService = mode !== 'roman' && !state.config.scriptConvert;
+    return h('button', { type: 'button', 'data-mode': mode, 'data-tip': needsService ? 'Needs the Groq key' : tip,
+      disabled: needsService ? true : null, onclick: () => convertScript(mode, seg, note) }, label);
+  }));
+  return section('Script', seg, note);
+}
+
+async function convertScript(mode, seg, note) {
+  if (!state.captions.length) return;
+  const buttons = [...seg.querySelectorAll('button')];
+  buttons.forEach((b) => { b.disabled = true; });
+  const was = note.textContent;
+  note.textContent = mode === 'english' ? 'Translating…' : 'Rewriting…';
+  try {
+    const items = state.captions.map((c) => ({ id: c.id, words: c.words.map((w) => w.text) }));
+    const res = await api('/api/convert', { method: 'POST', body: { mode, items } });
+    setCaptions(rebuild(state.captions, mode, res.items), `script-${Date.now()}`);
+    toast(mode === 'english' ? 'Captions translated to English. Ctrl+Z to undo.' : 'Captions rewritten. Ctrl+Z to undo.', 'ok', 3500);
+  } catch (e) {
+    toast(`Couldn’t change the script: ${e.message}`, 'error', 7000);
+  } finally {
+    note.textContent = was;
+    buttons.forEach((b) => { b.disabled = b.dataset.mode !== 'roman' && !state.config.scriptConvert; });
+  }
+}
+
+// ---------------------------------------------------------------- check
+
+function setWord(cid, wi, patch) {
+  setCaptions(state.captions.map((c) => (c.id === cid ? { ...c, words: c.words.map((w, k) => (k === wi ? { ...w, ...patch } : w)) } : c)), `check-${cid}-${wi}`);
+}
+
+function show(item) {
+  const c = state.captions.find((x) => x.id === item.cid);
+  if (!c) return;
+  state.selected = c.id;
+  emit('selection');
+  seek?.(c.start + 0.01);
+  replay();
+  requestAnimationFrame(() => list?.querySelector(`.cap[data-id="${c.id}"] .word[data-i="${item.wi}"]`)?.scrollIntoView({ block: 'nearest' }));
+}
+
+function reviewBar(items) {
+  if (!items.length) return null;
+  cursor = Math.min(cursor, items.length - 1);
+  const it = items[cursor];
+  const c = state.captions.find((x) => x.id === it.cid);
+  const word = c?.words[it.wi]?.text || '';
+  const q = it.kind === 'name'
+    ? h('span', {}, 'Did you mean ', h('b', {}, it.hint.term), ' for “', h('b', {}, it.hint.join ? `${word} ${c.words[it.wi + 1].text}` : word), '”?')
+    : h('span', {}, 'Is “', h('b', {}, word), '” right? The speech engine wasn’t sure.');
+  const btn = (label, fn, cls = 'btn sm') => h('button', { class: cls, type: 'button', onclick: fn }, label);
+  const actions = it.kind === 'name'
+    ? [btn(`Use ${it.hint.term}`, () => setCaptions(state.captions.map((x) => (x.id === it.cid ? applyHint(x, it.wi, it.hint) : x)), `hint-${it.cid}`), 'btn sm primary'),
+      btn('Keep', () => setWord(it.cid, it.wi, { checked: true }))]
+    : [btn('Looks right', () => setWord(it.cid, it.wi, { checked: true }), 'btn sm primary'),
+      btn('Edit', () => { const box = list?.querySelector(`.cap[data-id="${it.cid}"] textarea`); box?.focus(); box?.select(); })];
+  return h('div', { class: 'review' },
+    h('div', { class: 'review-head' },
+      h('b', {}, `${items.length} ${items.length === 1 ? 'word' : 'words'} to check`),
+      h('span', { class: 'grow' }),
+      h('button', { class: 'btn ghost sm', type: 'button', onclick: () => { show(items[cursor]); } }, 'Play'),
+      h('button', { class: 'btn ghost sm', type: 'button', disabled: items.length < 2 ? true : null,
+        onclick: () => { cursor = (cursor + 1) % items.length; renderList(); show(items[cursor]); } }, 'Next')),
+    h('p', { class: 'review-q' }, q),
+    h('div', { class: 'review-actions' }, actions,
+      h('span', { class: 'grow' }),
+      btn('All good', () => setCaptions(state.captions.map((x) => ({ ...x, words: x.words.map((w) => (isUnsure(w) || glossaryHint(x.words, x.words.indexOf(w)) ? { ...w, checked: true } : w)) })), 'check-all'), 'btn ghost sm')));
 }
 
 function toolsSection() {
@@ -103,8 +192,9 @@ function captionCard(c, i) {
 
   const emphOn = state.style.emphasis !== 'none';
   const words = h('div', { class: 'words' }, c.words.map((w, wi) => h('button', {
-    type: 'button', class: `word${w.emph ? ' emph' : ''}${w.conf != null && w.conf < 0.5 ? ' unsure' : ''}`,
-    title: `${fmtTime(w.start)}${w.conf != null && w.conf < 0.5 ? ' · the speech engine was unsure about this word' : ''}${emphOn ? ' · click to star for emphasis' : ''}`,
+    type: 'button', 'data-i': wi,
+    class: `word${w.emph ? ' emph' : ''}${isUnsure(w) ? ' unsure' : ''}${glossaryHint(c.words, wi) ? ' name-hint' : ''}${reviewing?.cid === c.id && reviewing.wi === wi ? ' reviewing' : ''}`,
+    title: `${fmtTime(w.start)}${isUnsure(w) ? ' · the speech engine was unsure about this word' : ''}${glossaryHint(c.words, wi) ? ` · did you mean ${glossaryHint(c.words, wi).term}?` : ''}${emphOn ? ' · click to star for emphasis' : ''}`,
     html: `${w.emph ? icon('star') : ''}<span></span>`,
     onclick: () => {
       seek?.(w.start + 0.01);
@@ -153,10 +243,10 @@ function renderList() {
       state.phase === 'editing' ? 'No captions yet. Pick the language above and generate captions.' : 'Captions appear here once they’re generated.'));
     return;
   }
-  const unsure = state.captions.some((c) => c.words.some((w) => w.conf != null && w.conf < 0.5));
-  list.replaceChildren(
-    unsure ? h('p', { class: 'hint' }, 'A wavy underline means the speech engine wasn’t sure about that word, so give it a quick look.') : '',
-    ...state.captions.map(captionCard));
+  const items = toCheck();
+  cursor = Math.min(cursor, Math.max(0, items.length - 1));
+  reviewing = items[cursor] || null;
+  list.replaceChildren(reviewBar(items) || '', ...state.captions.map(captionCard));
   markActive();
 }
 
@@ -175,7 +265,7 @@ export const captionsPanel = {
     list = h('div', { class: 'cap-list' });
     root = h('div', { style: { display: 'contents' } },
       h('div', { class: 'panel-head' }, h('h2', {}, 'Captions'), h('span', { class: 'hint', id: 'cap-count' })),
-      h('div', { class: 'panel-body', id: 'cap-body' }, languageSection(), toolsSection(), list));
+      h('div', { class: 'panel-body', id: 'cap-body' }, languageSection(), scriptSection(), toolsSection(), list));
     container.replaceChildren(root);
     renderList();
     this.update('count');
