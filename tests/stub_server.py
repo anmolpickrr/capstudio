@@ -51,6 +51,12 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 main.app.router.routes.insert(0, __import__("starlette.routing", fromlist=["Mount"]).Mount(
     "/__parity", app=StaticFiles(directory=pathlib.Path(__file__).parent / "parity", html=True)))
+# The Premiere Pro panel with Premiere replaced by a stand-in (tests/premiere/), the
+# panel's own files, and the test videos it "reads from disk".
+_here = pathlib.Path(__file__).parent
+for _path, _dir in (("/__premiere-panel", _here.parent / "premiere"), ("/__premiere", _here / "premiere"), ("/__media", _here / "media")):
+    main.app.router.routes.insert(0, __import__("starlette.routing", fromlist=["Mount"]).Mount(
+        _path, app=StaticFiles(directory=_dir, html=True)))
 transcribe.warm_up = lambda: None
 uvicorn.run(main.app, host="127.0.0.1", port=int(sys.argv[1]) if len(sys.argv) > 1 else 8765,
             log_level="warning")

@@ -4,6 +4,7 @@ import { ensureFonts } from '../engine/fonts.js';
 import { CaptionEngine } from '../engine/index.js';
 import { fitsCaption, fontsFor } from '../engine/layout.js';
 import { api, deleteJob, sleep, upload } from './api.js';
+import { usedRange } from './premiere.js';
 import { loadProject, newId, saveFile, saveProject } from './saved.js';
 import { DEFAULT_TEMPLATE, templateById } from '../templates/library.js';
 import { clearHistory, emit, set, state, subscribe } from './store.js';
@@ -41,7 +42,9 @@ export async function rechunk(words = flattenWords(state.captions)) {
   return chunkWords(words, style, (ws) => fitsCaption(ws, style, info.width, info.height));
 }
 
-export async function startUpload(file) {
+// `premiere`: the clip picked in the Premiere Pro panel ({ sequence, clip, project });
+// captions are then laid out at the sequence's frame size.
+export async function startUpload(file, premiere = null) {
   const max = state.config.maxUploadMB * 1024 * 1024;
   if (file.size > max) return toast(`That file is larger than ${state.config.maxUploadMB} MB.`, 'error');
   if (!/^video\//.test(file.type) && !/\.(mov|mkv|mp4|m4v|webm|avi|mxf)$/i.test(file.name)) {
@@ -52,7 +55,7 @@ export async function startUpload(file) {
   firstStyle();
   set({
     project: { kind: 'upload', name: file.name, file, src: URL.createObjectURL(file), info: null, job: null, saveId: newId() },
-    phase: 'uploading', captions: [], transcript: null, selected: null,
+    phase: 'uploading', captions: [], transcript: null, selected: null, premiere,
     progress: { upload: 0, transcribe: 0, message: 'Uploading your video…' },
   }, 'project');
   clearHistory();
@@ -67,7 +70,7 @@ export async function startUpload(file) {
     const job = await uploadReq;
     if (id !== runId) return;
     state.project.job = job.id;
-    state.project.info = job.info;
+    state.project.info = premiere ? { ...job.info, width: premiere.sequence.width, height: premiere.sequence.height } : job.info;
     emit('project');
     if (!job.info.acodec) {
       set({ phase: 'editing', progress: { ...state.progress, message: '' } }, 'project');
@@ -123,7 +126,12 @@ async function applyTranscript(tr) {
   }
   // nothing may run past the end of the video
   const dur = state.project?.info?.duration || Infinity;
-  const words = tr.words.filter((w) => w.start < dur - 0.05).map((w) => (w.end > dur ? { ...w, end: dur } : w));
+  let words = tr.words.filter((w) => w.start < dur - 0.05).map((w) => (w.end > dur ? { ...w, end: dur } : w));
+  if (state.premiere) {
+    // only the part of the clip used in the timeline
+    const { from, to } = usedRange();
+    words = words.filter((w) => w.end > from && w.start < to);
+  }
   const captions = (await rechunk(words)).map((c) => (c.end > dur ? { ...c, end: dur } : c));
   set({ transcript: tr, captions, phase: 'editing', selected: null }, 'project');
   clearHistory();
@@ -144,7 +152,7 @@ export async function leaveProject({ beacon = false } = {}) {
   if (p.job) deleteJob(p.job);
   if (p.src && p.kind === 'upload') URL.revokeObjectURL(p.src);
   if (!beacon) {
-    set({ project: null, phase: 'empty', captions: [], transcript: null, selected: null }, 'project');
+    set({ project: null, phase: 'empty', captions: [], transcript: null, selected: null, premiere: null }, 'project');
     clearHistory();
   }
 }
@@ -159,7 +167,7 @@ function snapshot() {
     id: p.saveId, name: p.name, size: p.file?.size || 0, type: p.file?.type || '', info: p.info, job: p.job,
     captions: state.captions, style: state.style, templateId: state.templateId,
     transcript: state.transcript ? transcript : null, language: state.language, vocabulary: state.vocabulary,
-    thumb: state.frameThumb || p.thumb || null, peaks: p.peaks || null,
+    thumb: state.frameThumb || p.thumb || null, peaks: p.peaks || null, premiere: state.premiere || null,
   };
 }
 
@@ -197,6 +205,7 @@ export async function resumeProject(id, pickFile) {
       savedJob: record.job, saveId: id, saved: true, fileSaved: true, peaks: record.peaks, thumb: record.thumb },
     phase: 'editing', captions: record.captions, style: record.style, templateId: record.templateId,
     transcript: record.transcript, language: record.language || state.language, vocabulary: record.vocabulary || '',
+    premiere: record.premiere || null,
     selected: null, progress: { upload: 1, transcribe: 1, message: '' },
   }, 'project');
   clearHistory();
@@ -226,4 +235,13 @@ export async function ensureJob() {
     }).finally(() => { sending = null; });
   }
   return sending;
+}
+
+// Premiere Pro panel: caption the clip selected in the timeline.
+export async function captionSelectedClip() {
+  const { selectedClip } = await import('./premiere.js');
+  let picked;
+  try { picked = await selectedClip(); } catch (e) { return toast(e.message, 'error', 8000); }
+  const { file, ...premiere } = picked;
+  await startUpload(file, premiere);
 }

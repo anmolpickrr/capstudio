@@ -51,6 +51,27 @@ Upload → captions generated automatically → choose a style → customise →
 - **Odia** appears in the list as *not supported yet*, because the Whisper model can't transcribe it.
 - Every word is drawn in a font that can render it: fonts fall back per word. The font picker only lists fonts that support the captions' language.
 
+## Premiere Pro panel
+
+`premiere/` is a panel for Premiere Pro 2022 and newer (CEP 11+, Windows and Mac). It shows the Capstudio app from the live site inside Premiere, so every feature works there, and adds the link to the timeline.
+
+- **Install:** the first page has an "Edit in Premiere Pro?" link with one line to run. On Windows that's `irm <site>/premiere/install.ps1 | iex` in PowerShell; on a Mac, `curl -fsSL <site>/premiere/install.sh | bash`. Each copies the panel into the user's CEP extensions folder and switches on Premiere's setting for panels from outside Adobe's store (`PlayerDebugMode`), with no admin rights. Then restart Premiere and open Window › Extensions › Capstudio. The server builds the download (`/premiere/capstudio-premiere.zip`) and the installers with its own address filled in.
+- **Use:**
+  1. Select a clip in the timeline and click "Caption the selected clip". The panel reads the clip's media file, and captions are written only for the part of it used in the timeline (from its in-point, at its speed). They're laid out at the sequence's frame size.
+  2. Style and check the captions as usual.
+  3. Export › "Add to timeline" draws them (and the watermark, if it's on) as a transparent QuickTime Animation `.mov` at the sequence's frame size and rate, for the clip's span. It's saved in a `Capstudio` folder next to the project (or in Documents if the project isn't saved yet) and imported into a `Capstudio` bin. It's placed on the first video track above the clip that's empty for that span. Optionally an SRT is also added as an editable Premiere caption track.
+- **How it works:**
+  - `premiere/index.html` and `bridge.js` show the app in a frame.
+  - The app (`static/js/app/premiere.js`, in "Premiere mode" via `?host=premiere`) asks the bridge for the selected clip and sends back the finished files, by `postMessage`.
+  - The bridge reads and writes files with Node, and calls `premiere/host/host.jsx` (ExtendScript) for the selection, import and placement.
+- **Limits:**
+  - One clip at a time, using its own media file's audio. Clips whose sound comes from a separate audio clip, nested sequences and multicam clips aren't supported yet.
+  - Media files over 1.5 GB are refused.
+  - Reversed clips are refused.
+- **Tests:**
+  - `node tests/premiere_host.mjs` checks that `host.jsx` is plain ES3 (ExtendScript) and runs it against a stand-in for Premiere's DOM (`tests/premiere/fake-premiere.js`).
+  - The browser test runs the whole loop through the real panel bridge, with Premiere and the file system replaced (`/__premiere/` on the test server).
+
 ## How the preview matches the export
 
 Captions are laid out once in the browser by `static/js/engine/`:

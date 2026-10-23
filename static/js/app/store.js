@@ -20,6 +20,7 @@ export const state = {
   language: 'auto',
   vocabulary: '',
   watermark: loadWatermark(), // fastrr watermark, remembered in this browser
+  premiere: null,       // in the Premiere Pro panel: { sequence, clip, project } being captioned
 };
 
 function loadWatermark() {

@@ -21,6 +21,7 @@ RUN grep -v '^faster-whisper' requirements.txt > /tmp/requirements.txt \
 COPY fonts fonts
 COPY server server
 COPY static static
+COPY premiere premiere
 
 ENV DATA_DIR=/tmp/caption-panel \
     ALLOWED_EMAIL_DOMAINS=pickrr.com,shiprocket.com \

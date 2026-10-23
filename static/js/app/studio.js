@@ -5,7 +5,8 @@ import { openExport } from './export.js';
 import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
-import { engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
+import { captionSelectedClip, engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
+import { inPremiere } from './premiere.js';
 import { listProjects, removeProject } from './saved.js';
 import { Stage } from './stage.js';
 import { canRedo, canUndo, redo, set, state, subscribe, undo } from './store.js';
@@ -35,7 +36,7 @@ function layout() {
   stopShowcase();
   stage?.destroy(); timeline?.destroy();
   stage = timeline = null;
-  view.replaceChildren(want === 'editor' ? editor() : welcome());
+  view.replaceChildren(want === 'editor' ? editor() : inPremiere ? panelHome() : welcome());
   if (want === 'editor') refreshEditor();
 }
 
@@ -58,6 +59,63 @@ const SCRIPTS = [
   ['हिन्दी', 'deva'], ['English', 'latin'], ['தமிழ்', 'taml'], ['తెలుగు', 'telu'], ['বাংলা', 'beng'], ['मराठी', 'deva'],
   ['ગુજરાતી', 'gujr'], ['ಕನ್ನಡ', 'knda'], ['മലയാളം', 'mlym'], ['ਪੰਜਾਬੀ', 'guru'], ['Hinglish', 'latin'], ['اردو', 'arab'],
 ];
+
+// How to install the Premiere Pro panel (premiere/ in the repository).
+function openPanelHelp() {
+  const dlg = $('#export-dialog');
+  const site = location.origin;
+  const cmd = (label, text) => {
+    const code = h('code', {}, text);
+    return h('div', { class: 'field' }, h('span', { class: 'label' }, label),
+      h('div', { class: 'cmd' }, code, h('button', { class: 'btn sm', type: 'button', onclick: async (e) => {
+        try { await navigator.clipboard.writeText(text); e.currentTarget.textContent = 'Copied'; } catch { /* select it instead */ }
+      } }, 'Copy')));
+  };
+  dlg.replaceChildren(h('div', { class: 'modal' },
+    h('div', { class: 'modal-head' },
+      h('div', {}, h('h2', {}, 'Capstudio for Premiere Pro'), h('p', {}, 'Caption a clip without leaving your timeline. Premiere Pro 2022 or newer, Windows or Mac.')),
+      h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
+    h('div', { class: 'modal-body' },
+      h('ol', { class: 'panel-steps' },
+        h('li', {}, 'Close Premiere Pro.'),
+        h('li', {}, 'Run the line for your computer (no admin rights needed).'),
+        h('li', {}, 'Open Premiere Pro, then Window › Extensions › Capstudio.')),
+      cmd('Windows: in PowerShell', `irm ${site}/premiere/install.ps1 | iex`),
+      cmd('Mac: in Terminal', `curl -fsSL ${site}/premiere/install.sh | bash`),
+      h('p', { class: 'hint' }, 'In the panel: select a clip in the timeline, click “Caption the selected clip”, style it, then “Add to timeline”. The captions are placed on the track above the clip, with an editable caption track if you like. ',
+        h('a', { href: `${site}/premiere/capstudio-premiere.zip` }, 'Download the panel files'), ' to install by hand.'))));
+  dlg.showModal();
+}
+
+// The first screen inside the Premiere Pro panel: pick the clip in the timeline.
+function panelHome() {
+  const langs = state.config.languages;
+  const groups = {};
+  for (const l of langs) (groups[l.group] ||= []).push(l);
+  const langSel = h('select', { class: 'select', 'aria-label': 'Language spoken in the clip' },
+    Object.entries(groups).map(([g, ls]) => h('optgroup', { label: g },
+      ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
+  langSel.value = state.language;
+  langSel.addEventListener('change', () => set({ language: langSel.value }));
+  const go = h('button', { class: 'btn brand lg', type: 'button', onclick: async () => {
+    go.disabled = true;
+    go.textContent = 'Reading the clip…';
+    await captionSelectedClip();
+    go.disabled = false;
+    go.textContent = 'Caption the selected clip';
+  } }, 'Caption the selected clip');
+  return h('div', { class: 'panel-home' },
+    h('div', { class: 'panel-home-card' },
+      h('span', { class: 'kicker' }, 'Capstudio for Premiere Pro'),
+      h('h1', {}, 'Caption a clip'),
+      h('ol', { class: 'panel-steps' },
+        h('li', {}, 'Select the clip in your timeline.'),
+        h('li', {}, 'Click below. Capstudio writes captions for the part of the clip you use.'),
+        h('li', {}, 'Style them, then “Add to timeline”: they land on the track above the clip.')),
+      h('label', { class: 'upload-options' }, h('span', {}, 'Language in the clip'), langSel),
+      go,
+      recentList()));
+}
 
 function welcome() {
   const langs = state.config.languages;
@@ -115,7 +173,7 @@ function welcome() {
             h('span', {}, 'Captions that ', h('span', { class: 't-pop' }, 'POP'), ','),
             h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
           h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
-          upload, recentList()),
+          upload, h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro? Get the Capstudio panel'), recentList()),
         h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
       ticker,
       h('section', { class: 'looks' },
@@ -236,7 +294,7 @@ function editor() {
     h('div', { class: 'bar-actions' },
       h('button', { class: 'btn ghost icon-only', id: 'undo', 'data-tip': 'Undo (Ctrl+Z)', 'data-tip-pos': 'below', html: icon('undo'), onclick: () => undo() }),
       h('button', { class: 'btn ghost icon-only', id: 'redo', 'data-tip': 'Redo (Ctrl+Shift+Z)', 'data-tip-pos': 'below', html: icon('redo'), onclick: () => redo() }),
-      h('button', { class: 'btn', id: 'new-video', html: '<span>New video</span>', onclick: newVideo }),
+      h('button', { class: 'btn', id: 'new-video', html: `<span>${inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
       h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
 
   const panel = h('aside', { class: 'panel', id: 'panel', role: 'tabpanel' });

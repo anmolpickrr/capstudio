@@ -32,7 +32,7 @@ from dataclasses import dataclass, field
 from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, HTTPException, Request
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
@@ -642,6 +642,43 @@ def versioned_file(version: str, path: str):
     # this release's files never change at this address; an older page gets today's files
     cache = "public, max-age=31536000, immutable" if version == APP_VERSION else "no-cache"
     return FileResponse(f, headers={"Cache-Control": cache})
+
+
+# ------------------------------------------------------------------ Premiere Pro panel
+
+PANEL = ROOT / "premiere"
+
+
+def site_url(request: Request) -> str:
+    return auth.public_url(request)
+
+
+@app.get("/premiere/capstudio-premiere.zip")
+def premiere_panel(request: Request):
+    """The panel's files (premiere/, without the installers), pointed at this server."""
+    import io
+    import zipfile
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as z:
+        for f in sorted(PANEL.rglob("*")):
+            rel = f.relative_to(PANEL).as_posix()
+            if f.is_dir() or rel.startswith("install/"):
+                continue
+            data = f.read_bytes()
+            if rel == "index.html":
+                data = re.sub(rb'data-site="[^"]*"', b'data-site="' + site_url(request).encode() + b'"', data)
+            z.writestr(rel, data)
+    return Response(buf.getvalue(), media_type="application/zip",
+                    headers={"Content-Disposition": 'attachment; filename="capstudio-premiere.zip"',
+                             "Cache-Control": "no-cache"})
+
+
+@app.get("/premiere/install.{kind}")
+def premiere_installer(kind: str, request: Request):
+    if kind not in ("ps1", "sh"):
+        raise HTTPException(404, "Not found.")
+    text = (PANEL / "install" / f"install.{kind}").read_text().replace("__SITE__", site_url(request))
+    return Response(text, media_type="text/plain; charset=utf-8", headers={"Cache-Control": "no-cache"})
 
 
 @app.middleware("http")

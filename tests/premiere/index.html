@@ -1,0 +1,41 @@
+<!doctype html>
+<!-- Test stand-in for the Premiere Pro panel: the real bridge (premiere/bridge.js) and
+     host script (premiere/host/host.jsx), with Premiere's DOM and the file system
+     replaced (fake-premiere.js). Served by tests/stub_server.py at /__premiere/. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>html, body { margin: 0; height: 100%; } iframe { display: block; width: 100%; height: 100%; border: 0; } .done { display: none; }</style>
+</head>
+<body>
+  <div id="loading"><p id="msg"></p></div>
+  <script src="fake-premiere.js"></script>
+  <script>
+    (async () => {
+      document.documentElement.setAttribute('data-site', location.origin);
+      const fake = makeFakePremiere({
+        width: 1080, height: 1920, fps: 25, projectPath: '/work/Reel.prproj',
+        tracks: [
+          [{ name: 'vert.webm', path: '/media/vert.webm', start: 2, end: 8, inPoint: 3, selected: true }],
+          [{ name: 'logo.png', path: '/media/logo.png', start: 0, end: 4 }],
+          [],
+        ],
+      });
+      Object.assign(window, { __fake: fake, app: fake.app, ProjectItemType: fake.ProjectItemType, Sequence: fake.Sequence, __written: {} });
+      (0, eval)(await (await fetch('/__premiere-panel/host/host.jsx')).text());
+      window.__capstudioHost = {
+        evalScript: (code) => Promise.resolve((0, eval)(code)),
+        size: () => 1000,
+        read: (p) => fetch('/__media/' + p.split('/').pop()).then((r) => r.arrayBuffer()),
+        write: (p, bytes) => { window.__written[p] = bytes; return Promise.resolve(); },
+        mkdir: () => {}, exists: (p) => p in window.__written,
+        join: (...a) => a.join('/'), dirname: (p) => p.replace(/\/[^/]*$/, ''), basename: (p) => p.split('/').pop(),
+        documents: () => '/Users/me/Documents',
+      };
+      const s = document.createElement('script');
+      s.src = '/__premiere-panel/bridge.js';
+      document.body.append(s);
+    })();
+  </script>
+</body>
+</html>

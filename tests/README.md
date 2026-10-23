@@ -17,6 +17,7 @@ python tests/stub_server.py 8765 &       # app with sign-in off and a fake speec
 cd tests && npm install && npx playwright install chromium
 node e2e.mjs                             # upload → captions → style → export → download
 node parity.mjs                          # preview vs export, pixel comparison
+node premiere_host.mjs                   # the Premiere panel's ExtendScript, against a stand-in Premiere
 ```
 
 - **`e2e.mjs`** exports five kinds of source video:

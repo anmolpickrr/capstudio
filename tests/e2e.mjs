@@ -4,7 +4,7 @@
 // checks the style showcase on the first page and undo.
 // Needs tests/stub_server.py running (see tests/README.md).
 import { execFileSync } from 'node:child_process';
-import { mkdtempSync } from 'node:fs';
+import { mkdtempSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { chromium } from 'playwright';
@@ -247,6 +247,57 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-autosave.png') }).catch(() => {});
     fail('brand kit / review / script / autosave', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// The Premiere Pro panel, end to end: the real panel bridge and host script with
+// Premiere replaced by a stand-in (tests/premiere/). A clip used from 0:03 of its
+// file sits at 0:02–0:08 on V1 of a 1080×1920, 25 fps sequence; V2 is busy there.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__premiere/`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the selected clip")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 120000 });
+    const frame = page.frames().find((f) => f.url().includes('host=premiere'));
+    const st = await frame.evaluate(async () => {
+      const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      return { w: state.project.info.width, h: state.project.info.height, caps: state.captions.map((c) => [c.start, c.end]) };
+    });
+    const diffs = [];
+    if (st.w !== 1080 || st.h !== 1920) diffs.push(`laid out at ${st.w}x${st.h}, expected the sequence's 1080x1920`);
+    if (!st.caps.length || st.caps.some(([a, b]) => b <= 3 || a >= 9)) diffs.push('captions outside the used part (0:03–0:09) of the file');
+    await app.locator('#export-btn').click();
+    await app.locator('#export-dialog .btn.brand').click();
+    await app.locator('#export-status .result.ok').waitFor({ timeout: 120000 });
+    const out = await page.evaluate(() => ({ log: window.__fake.log,
+      files: Object.fromEntries(Object.entries(window.__written).map(([k, v]) => [k, Array.from(new Uint8Array(v))])) }));
+    const movPath = Object.keys(out.files).find((k) => k.endsWith('.mov'));
+    if (movPath !== '/work/Capstudio/vert captions.mov') diffs.push(`saved as ${movPath}`);
+    const mov = join(OUT, 'panel.mov');
+    writeFileSync(mov, Buffer.from(out.files[movPath] || []));
+    const v = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries',
+      'stream=codec_name,pix_fmt,width,height,r_frame_rate,nb_read_frames', '-of', 'json', mov])).streams[0];
+    if (v.codec_name !== 'qtrle' || v.width !== 1080 || v.height !== 1920 || v.r_frame_rate !== '25/1' || Number(v.nb_read_frames) !== 150) {
+      diffs.push(`captions video ${v.codec_name} ${v.width}x${v.height} ${v.r_frame_rate} ${v.nb_read_frames} frames, expected qtrle 1080x1920 25/1 150`);
+    }
+    const srt = Buffer.from(out.files['/work/Capstudio/vert captions.srt'] || []).toString();
+    if (!srt.startsWith('1\n00:00:00,000')) diffs.push('caption track not timed from the clip start');
+    const placed = out.log.find((l) => l[0] === 'overwriteClip');
+    if (!placed || placed[1] !== 2 || placed[3] !== 2) diffs.push(`placed ${JSON.stringify(placed)}, expected V3 at 0:02`);
+    if (!out.log.some((l) => l[0] === 'createCaptionTrack' && l[2] === 2)) diffs.push('no editable caption track');
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ Premiere panel: selected clip captioned for its used part, transparent captions at the sequence size and rate on V3, editable caption track');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-premiere.png') }).catch(() => {});
+    fail('Premiere panel', e.message.split('\n')[0]);
   } finally {
     await page.close();
   }

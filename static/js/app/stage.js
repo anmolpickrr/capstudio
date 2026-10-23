@@ -29,7 +29,11 @@ export class Stage {
 
     this.ro = new ResizeObserver(() => this.fit());
     this.ro.observe(this.stage);
-    this.video.addEventListener('loadedmetadata', () => { this.fit(); this.draw(); });
+    this.video.addEventListener('loadedmetadata', () => {
+      // in the Premiere panel, start where the clip's used part starts
+      if (state.premiere && !this.startedAtClip) { this.startedAtClip = true; this.video.currentTime = state.premiere.clip.inPoint; }
+      this.fit(); this.draw();
+    });
     this.video.addEventListener('loadeddata', () => { this.captureThumb(); this.draw(); });
     this.video.addEventListener('seeked', () => this.draw());
     this.video.addEventListener('timeupdate', () => { if (this.video.paused) this.draw(); });

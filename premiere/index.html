@@ -1,0 +1,36 @@
+<!doctype html>
+<!-- Capstudio panel for Premiere Pro: the Capstudio app in a frame, plus a bridge
+     (bridge.js) that hands it the selected clip and puts the finished captions on
+     the timeline through host/host.jsx. -->
+<html lang="en" data-site="https://caption-studio-ujgd.onrender.com">
+<head>
+  <meta charset="utf-8">
+  <title>Capstudio</title>
+  <style>
+    html, body { margin: 0; height: 100%; background: #050505; overflow: hidden; color: #f4f4f5; font: 13px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    iframe { display: block; width: 100%; height: 100%; border: 0; opacity: 0; transition: opacity .3s; }
+    iframe.ready { opacity: 1; }
+    .loading { position: fixed; inset: 0; display: grid; place-items: center; transition: opacity .3s; background: #050505; }
+    .loading.done { opacity: 0; pointer-events: none; }
+    .box { display: grid; justify-items: center; gap: 18px; text-align: center; padding: 24px; }
+    .mark { display: grid; gap: 7px; width: 44px; }
+    .mark i { display: block; height: 9px; border-radius: 9px; background: #6037d7; }
+    .mark i:first-child { width: 70%; margin-left: 30%; }
+    .bar { width: 180px; height: 3px; border-radius: 999px; background: rgba(255, 255, 255, .1); overflow: hidden; }
+    .bar i { display: block; width: 35%; height: 100%; background: #7b5cf5; animation: slide 1.3s ease-in-out infinite; }
+    @keyframes slide { from { transform: translateX(-100%); } to { transform: translateX(300%); } }
+    .msg { margin: 0; color: #a1a1aa; max-width: 36ch; }
+    .msg a { color: #a08bff; }
+  </style>
+</head>
+<body>
+  <div class="loading" id="loading">
+    <div class="box">
+      <div class="mark" aria-hidden="true"><i></i><i></i></div>
+      <div class="bar" aria-hidden="true"><i></i></div>
+      <p class="msg" id="msg" role="status"></p>
+    </div>
+  </div>
+  <script src="bridge.js"></script>
+</body>
+</html>

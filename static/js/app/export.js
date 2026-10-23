@@ -9,6 +9,7 @@ import { api, sleep } from './api.js';
 import { ensureJob } from './session.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { exportOverlay } from './overlayexport.js';
+import { addToTimeline, inPremiere } from './premiere.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
 import { $, download, h, toast } from './ui.js';
@@ -34,6 +35,7 @@ async function captionFile(kind) {
 }
 
 export function openExport() {
+  if (inPremiere && state.premiere) return openTimelineExport();
   dlg = $('#export-dialog');
   const info = state.project.info;
   const cfg = state.config;
@@ -179,6 +181,64 @@ export function openExport() {
       h('div', { class: 'result-row' }, h('div', {}, h('b', {}, rr.overlay ? 'Your captions are ready' : 'Your video is ready'), h('br'), h('small', {}, `${rr.file}${rr.size ? ` · ${fmtSize(rr.size)}` : ''} · took ${Math.round(rr.elapsed)}s`)), a),
       rr.overlay ? h('p', { class: 'hint' }, 'In Premiere Pro or After Effects, put it on the track above your video, starting at the same frame. It’s QuickTime Animation with transparency, so it opens directly.') : null));
     if (!dlg.open) toast('Your video is ready. Open Export to download it.', 'ok', 8000);
+  }
+}
+
+// In the Premiere Pro panel: draw the captions over the clip's span and place them
+// on the timeline, optionally with an editable caption track.
+function openTimelineExport() {
+  dlg = $('#export-dialog');
+  const { sequence: sq, clip } = state.premiere;
+  const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+  const editable = h('input', { type: 'checkbox', role: 'switch', checked: true });
+  const files = h('div', { class: 'files' }, [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS (styled)'], ['txt', 'Transcript']]
+    .map(([k, t]) => h('button', { class: 'btn sm', type: 'button', html: `<span>${t}</span>`, onclick: () => captionFile(k) })));
+  const status = h('div', { id: 'export-status' });
+  const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Add to timeline</span>', onclick: () => start() });
+  dlg.replaceChildren(h('div', { class: 'modal' },
+    h('div', { class: 'modal-head' },
+      h('div', {}, h('h2', {}, 'Add to timeline'), h('p', {}, `Over “${clip.name}”, on the first empty video track above it.`)),
+      h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
+    h('div', { class: 'modal-body' },
+      h('div', { class: 'specs' },
+        h('span', {}, sq.name), h('span', {}, `${sq.width}×${sq.height}`), h('span', {}, `${+sq.fps.toFixed(3)} fps`),
+        h('span', {}, `${fmt(clip.start)} – ${fmt(clip.end)}`)),
+      h('p', { class: 'note info' }, 'The captions (and the watermark, if it’s on) are drawn on a transparent layer at the sequence’s size and frame rate, saved in a Capstudio folder next to your project, and placed in a Capstudio bin.'),
+      h('label', { class: 'switch' }, h('span', {}, 'Also add an editable caption track (plain text, for corrections in Premiere)'), editable),
+      h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
+      status,
+      h('div', { style: { display: 'flex', justifyContent: 'flex-end' } }, go))));
+  dlg.showModal();
+
+  async function start() {
+    running = true; cancelled = false;
+    go.disabled = true;
+    const bar = h('i');
+    const msg = h('small', {}, 'Drawing the captions…');
+    const local = new AbortController();
+    const cancel = h('button', { class: 'btn sm', type: 'button', onclick: () => { cancelled = true; local.abort(); } }, 'Cancel');
+    status.replaceChildren(h('div', { class: 'result' }, h('div', { class: 'result-row' }, h('b', {}, 'Adding to the timeline'), cancel),
+      h('div', { class: 'progress' }, bar), msg));
+    try {
+      await ensureFonts(fontsFor(state.captions, state.style));
+      const r = await addToTimeline({
+        editable: editable.checked, signal: local.signal,
+        onProgress: (p) => { bar.style.width = `${Math.round(p * 100)}%`; msg.textContent = `Drawing the captions… ${Math.round(p * 100)}%`; },
+      });
+      state.project.exported = true;
+      emit('project');
+      status.replaceChildren(h('div', { class: 'result ok' }, h('div', { class: 'result-row' },
+        h('div', {}, h('b', {}, `Added on track V${r.track}`), h('br'),
+          h('small', {}, `${r.captions ? 'With an editable caption track. ' : ''}Saved as ${r.file}`)))));
+      toast(`Captions added to the timeline on V${r.track}.`, 'ok', 5000);
+    } catch (e) {
+      if (cancelled) { msg.textContent = 'Cancelled.'; return; }
+      status.replaceChildren(h('p', { class: 'note' }, e.message));
+      toast(e.message, 'error', 9000);
+    } finally {
+      running = false;
+      go.disabled = false;
+    }
   }
 }
 

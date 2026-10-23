@@ -173,3 +173,21 @@ def test_server_export_with_watermark(client, video):
             break
         time.sleep(0.1)
     assert st["status"] == "done", st
+
+
+def test_premiere_panel_download(client):
+    import io
+    import zipfile
+    r = client.get("/premiere/capstudio-premiere.zip")
+    assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
+    z = zipfile.ZipFile(io.BytesIO(r.content))
+    names = set(z.namelist())
+    assert {"CSXS/manifest.xml", "index.html", "bridge.js", "host/host.jsx"} <= names
+    assert not any(n.startswith("install/") for n in names)
+    # the panel points at the server it was downloaded from
+    assert b'data-site="http://testserver"' in z.read("index.html")
+    for kind in ("ps1", "sh"):
+        text = client.get(f"/premiere/install.{kind}").text
+        assert "'http://testserver'" in text and "/premiere/capstudio-premiere.zip" in text and "__SITE__" not in text
+        assert "PlayerDebugMode" in text
+    assert client.get("/premiere/install.exe").status_code == 404

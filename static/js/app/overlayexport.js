@@ -150,7 +150,9 @@ export function overlayName(original) {
   return `${original.replace(/\.[^.]*$/, '') || 'video'} captions.mov`;
 }
 
-export async function exportOverlay({ name, info, captions, style, spaced, watermark, onProgress, signal }) {
+// `from` and `speed` map overlay time to caption time (a clip placed in a Premiere
+// timeline from its in-point, maybe sped up): caption time = from + t × speed.
+export async function exportOverlay({ name, info, captions, style, spaced, watermark, onProgress, signal, from = 0, speed = 1, file }) {
   const W = info.width, H = info.height;
   // frame rate as a whole-number timescale: 29.97 → 29970 per second, 1000 per frame
   const fps = info.fps && info.fps > 1 && info.fps < 241 ? info.fps : 30;
@@ -176,7 +178,7 @@ export async function exportOverlay({ name, info, captions, style, spaced, water
   const t0 = performance.now();
   for (let i = 0; i < count; i++) {
     if (signal?.aborted) throw new DOMException('Export cancelled.', 'AbortError');
-    const t = (i * delta) / timescale;
+    const t = from + ((i * delta) / timescale) * speed;
     ctx.clearRect(0, 0, W, H);
     if (wm) {
       ctx.globalAlpha = wm.alpha;
@@ -216,5 +218,5 @@ export async function exportOverlay({ name, info, captions, style, spaced, water
     }
   }
   const blob = movFile(frames, keys, W, H, timescale, delta);
-  return { blob, file: overlayName(name), size: blob.size, elapsed: (performance.now() - t0) / 1000 };
+  return { blob, file: file || overlayName(name), size: blob.size, elapsed: (performance.now() - t0) / 1000 };
 }
