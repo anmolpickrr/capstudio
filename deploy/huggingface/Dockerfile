@@ -31,7 +31,7 @@ RUN mkdir -p /opt/models \
 
 COPY server server
 COPY static static
-COPY premiere premiere
+COPY panel panel
 
 # Spaces run the container as user 1000; everything it writes goes to /tmp.
 ENV DATA_DIR=/tmp/caption-panel \

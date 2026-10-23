@@ -175,10 +175,10 @@ def test_server_export_with_watermark(client, video):
     assert st["status"] == "done", st
 
 
-def test_premiere_panel_download(client):
+def test_panel_download(client):
     import io
     import zipfile
-    r = client.get("/premiere/capstudio-premiere.zip")
+    r = client.get("/panel/capstudio-panel.zip")
     assert r.status_code == 200 and r.headers["content-type"] == "application/zip"
     z = zipfile.ZipFile(io.BytesIO(r.content))
     names = set(z.namelist())
@@ -186,11 +186,15 @@ def test_premiere_panel_download(client):
     assert not any(n.startswith("install/") for n in names)
     # the panel points at the server it was downloaded from
     assert b'data-site="http://testserver"' in z.read("index.html")
+    assert b'Host Name="AEFT"' in z.read("CSXS/manifest.xml") and b'Host Name="PPRO"' in z.read("CSXS/manifest.xml")
     for kind in ("ps1", "sh"):
-        text = client.get(f"/premiere/install.{kind}").text
-        assert "'http://testserver'" in text and "/premiere/capstudio-premiere.zip" in text and "__SITE__" not in text
+        text = client.get(f"/panel/install.{kind}").text
+        assert "'http://testserver'" in text and "/panel/capstudio-panel.zip" in text and "__SITE__" not in text
         assert "PlayerDebugMode" in text
-    assert client.get("/premiere/install.exe").status_code == 404
+    assert client.get("/panel/install.exe").status_code == 404
+    # the first links handed out still work
+    assert client.get("/premiere/capstudio-premiere.zip").content == r.content
+    assert client.get("/premiere/install.sh").text == client.get("/panel/install.sh").text
 
 
 @pytest.mark.parametrize("mode", ["fill", "fit"])

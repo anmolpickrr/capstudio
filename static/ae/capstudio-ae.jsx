@@ -3,9 +3,11 @@
  * frame rate and length of your video with every caption as editable layers: a
  * text layer per word (plus its shadow and glow), shape layers for backgrounds and
  * pills, all animated with keyframes. Drop the composition over your footage at 0:00.
- * Install the fonts in the "fonts" folder next to this script first. */
-(function (D) {
-  if (!D) { alert('This script has no captions in it. Export it again from Capstudio.'); return; }
+ * Install the fonts in the "fonts" folder next to this script first.
+ *
+ * CapstudioBuild(D, comp) does the building; the Capstudio panel for After Effects
+ * loads this file (with no captions filled in) to use it on its own precomp. */
+function CapstudioBuild(D, comp) {
 
   function rgb(hex) {
     var h = String(hex || '#000000').replace('#', '');
@@ -101,7 +103,7 @@
   }
 
   function watermark(comp, w) {
-    var file = new File(File($.fileName).parent.fsName + '/' + w.file), item, layer, tr;
+    var file = new File(w.path || File($.fileName).parent.fsName + '/' + w.file), item, layer, tr;
     if (!file.exists) return;
     item = app.project.importFile(new ImportOptions(file));
     layer = comp.layers.add(item);
@@ -112,17 +114,25 @@
     layer.name = 'Watermark';
   }
 
-  app.beginUndoGroup('Capstudio captions');
-  var comp = app.project.items.addComp(D.name, D.width, D.height, 1, D.duration, D.fps), i, names = [];
+  var i, names = [];
   if (D.watermark) watermark(comp, D.watermark);
   // layers are added on top, so in drawing order the last drawn ends up in front
   for (i = 0; i < D.layers.length; i++) {
     if (D.layers[i].type === 'box') boxLayer(comp, D.layers[i]); else textLayer(comp, D.layers[i]);
   }
+  for (i in missing) if (missing.hasOwnProperty(i)) names.push(missing[i]);
+  return { count: D.layers.length, missing: names };
+}
+
+(function (D) {
+  if (D === false) return; // loaded by the panel, which calls CapstudioBuild itself
+  if (!D) { alert('This script has no captions in it. Export it again from Capstudio.'); return; }
+  app.beginUndoGroup('Capstudio captions');
+  var comp = app.project.items.addComp(D.name, D.width, D.height, 1, D.duration, D.fps);
+  var result = CapstudioBuild(D, comp);
   comp.openInViewer();
   app.endUndoGroup();
-  for (i in missing) if (missing.hasOwnProperty(i)) names.push(missing[i]);
-  alert('Capstudio: ' + D.layers.length + ' layers in "' + D.name + '". Place it over your footage at 0:00.' +
-    (missingCount ? '\n\nThese fonts aren\'t installed, so After Effects used a stand-in: ' + names.join(', ') +
+  alert('Capstudio: ' + result.count + ' layers in "' + D.name + '". Place it over your footage at 0:00.' +
+    (result.missing.length ? '\n\nThese fonts aren\'t installed, so After Effects used a stand-in: ' + result.missing.join(', ') +
       '. Install them from the "fonts" folder next to this script, restart After Effects and run the script again.' : ''));
 }(/*CAPSTUDIO_DATA*/null));

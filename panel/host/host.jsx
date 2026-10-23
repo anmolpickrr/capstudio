@@ -1,7 +1,10 @@
-/* Capstudio: the Premiere Pro side of the panel (ExtendScript, ES3).
- * The panel calls Capstudio.selection() to learn which clip to caption, and
- * Capstudio.place() to put the finished captions on the timeline. Every function
- * returns a JSON string: {"ok": true, ...} or {"ok": false, "error": "..."}. */
+/* Capstudio: the Premiere Pro and After Effects side of the panel (ExtendScript, ES3).
+ * Premiere Pro: Capstudio.selection() says which clip to caption, Capstudio.place()
+ * puts the finished captions on the timeline. After Effects: CapstudioAE.selection()
+ * says which layer, CapstudioAE.build() adds the captions as editable layers in a
+ * precomp (with CapstudioBuild from static/ae/capstudio-ae.jsx, which the panel loads
+ * first), CapstudioAE.placeFootage() adds a transparent captions video instead.
+ * Every function returns a JSON string: {"ok": true, ...} or {"ok": false, "error": "..."}. */
 var Capstudio = (function () {
   var TICKS_PER_SECOND = 254016000000;
 
@@ -130,4 +133,93 @@ var Capstudio = (function () {
   }
 
   return { selection: selection, place: place, json: json };
+}());
+
+var CapstudioAE = (function () {
+  var json = Capstudio.json;
+  function fail(message) { return json({ ok: false, error: message }); }
+
+  function activeComp() {
+    var c = app.project.activeItem;
+    return c && c instanceof CompItem ? c : null;
+  }
+
+  function fileOf(layer) {
+    var src = layer.source;
+    return src && src instanceof FootageItem && src.mainSource && src.mainSource.file ? src.mainSource.file : null;
+  }
+
+  // The selected footage layer in the active composition: its media file, where it
+  // sits in the comp (start, in and out points, time stretch), and the comp's size.
+  function selection() {
+    var comp = activeComp(), sel, pick = null, i;
+    if (!comp) return fail('Open a composition first.');
+    sel = comp.selectedLayers;
+    for (i = 0; i < sel.length; i++) if (fileOf(sel[i])) { pick = sel[i]; break; }
+    if (!pick) return fail('Select the footage layer to caption first (a video with sound, not a precomp or a solid).');
+    if (pick.timeRemapEnabled) return fail('That layer uses time remapping. Turn it off, or precompose the layer, then try again.');
+    if (!(pick.stretch > 0)) return fail('Reversed layers can\'t be captioned. Select a layer that plays forwards.');
+    return json({
+      ok: true,
+      project: app.project.file ? app.project.file.fsName : '',
+      comp: { name: comp.name, width: comp.width, height: comp.height, fps: comp.frameRate, duration: comp.duration },
+      layer: {
+        name: pick.name, index: pick.index, path: fileOf(pick).fsName, startTime: pick.startTime,
+        inPoint: pick.inPoint, outPoint: pick.outPoint, stretch: pick.stretch
+      }
+    });
+  }
+
+  // The captioned layer again (its index may have changed if layers were added).
+  function target(comp, index, name) {
+    var i;
+    if (index <= comp.numLayers && comp.layer(index).name === name) return comp.layer(index);
+    for (i = 1; i <= comp.numLayers; i++) if (comp.layer(i).name === name) return comp.layer(i);
+    return null;
+  }
+
+  // Put an item just above the layer, over the same span. A precomp of captions in
+  // the source's own time takes the layer's start and stretch, so it stays in sync.
+  function above(comp, item, layer, sameTime) {
+    var l = comp.layers.add(item);
+    l.moveBefore(layer);
+    if (sameTime) { l.startTime = layer.startTime; l.stretch = layer.stretch; } else { l.startTime = layer.inPoint; }
+    l.inPoint = layer.inPoint;
+    l.outPoint = layer.outPoint;
+    return l;
+  }
+
+  function build(D, index, name) {
+    var comp = activeComp(), layer, pre, result, l;
+    if (!comp) return fail('Open the composition with the captioned layer first.');
+    layer = target(comp, index, name);
+    if (!layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
+    if (typeof CapstudioBuild !== 'function') return fail('The panel couldn\'t load its layer builder. Close and reopen the panel.');
+    app.beginUndoGroup('Capstudio captions');
+    try {
+      pre = app.project.items.addComp(D.name, D.width, D.height, 1, D.duration, D.fps);
+      result = CapstudioBuild(D, pre);
+      l = above(comp, pre, layer, true);
+    } finally {
+      app.endUndoGroup();
+    }
+    return json({ ok: true, layers: result.count, missing: result.missing, name: l.name });
+  }
+
+  function placeFootage(path, index, name) {
+    var comp = activeComp(), layer, item, l;
+    if (!comp) return fail('Open the composition with the captioned layer first.');
+    layer = target(comp, index, name);
+    if (!layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
+    app.beginUndoGroup('Capstudio captions');
+    try {
+      item = app.project.importFile(new ImportOptions(new File(path)));
+      l = above(comp, item, layer, false);
+    } finally {
+      app.endUndoGroup();
+    }
+    return json({ ok: true, name: l.name });
+  }
+
+  return { selection: selection, build: build, placeFootage: placeFootage };
 }());

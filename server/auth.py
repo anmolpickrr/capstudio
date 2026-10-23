@@ -29,7 +29,7 @@ GOOGLE_TOKEN = "https://oauth2.googleapis.com/token"
 GOOGLE_USERINFO = "https://openidconnect.googleapis.com/v1/userinfo"
 
 # Reachable without signing in.
-PUBLIC_PREFIXES = ("/login", "/auth/", "/api/health", "/css/", "/favicon", "/logo.svg", "/fonts/", "/premiere/")
+PUBLIC_PREFIXES = ("/login", "/auth/", "/api/health", "/css/", "/favicon", "/logo.svg", "/fonts/", "/premiere/", "/panel/")
 
 router = APIRouter()
 # A stable secret keeps people signed in across restarts. Derived from the Google

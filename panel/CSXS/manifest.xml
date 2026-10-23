@@ -1,5 +1,5 @@
 <?xml version="1.0" encoding="UTF-8"?>
-<!-- Capstudio panel for Premiere Pro 2022 and newer (CEP 11+). -->
+<!-- Capstudio panel for Premiere Pro and After Effects 2022 and newer (CEP 11+). -->
 <ExtensionManifest Version="7.0" ExtensionBundleId="com.fastrr.capstudio" ExtensionBundleVersion="1.0.0"
   ExtensionBundleName="Capstudio" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
@@ -8,6 +8,7 @@
   <ExecutionEnvironment>
     <HostList>
       <Host Name="PPRO" Version="[22.0,99.9]"/>
+      <Host Name="AEFT" Version="[22.0,99.9]"/>
     </HostList>
     <LocaleList>
       <Locale Code="All"/>

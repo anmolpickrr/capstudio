@@ -6,7 +6,7 @@ import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
 import { captionSelectedClip, engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
-import { inPremiere } from './premiere.js';
+import { inAE, inPremiere } from './premiere.js';
 import { listProjects } from './saved.js';
 import { enqueue, liveProgress, nextReady, remove as removeQueued, retry } from './queue.js';
 import { Stage } from './stage.js';
@@ -66,7 +66,7 @@ const SCRIPTS = [
   ['ગુજરાતી', 'gujr'], ['ಕನ್ನಡ', 'knda'], ['മലയാളം', 'mlym'], ['ਪੰਜਾਬੀ', 'guru'], ['Hinglish', 'latin'], ['اردو', 'arab'],
 ];
 
-// How to install the Premiere Pro panel (premiere/ in the repository).
+// How to install the Premiere Pro and After Effects panel (panel/ in the repository).
 function openPanelHelp() {
   const dlg = $('#export-dialog');
   const site = location.origin;
@@ -79,21 +79,21 @@ function openPanelHelp() {
   };
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Capstudio for Premiere Pro'), h('p', {}, 'Caption a clip without leaving your timeline. Premiere Pro 2022 or newer, Windows or Mac.')),
+      h('div', {}, h('h2', {}, 'Capstudio for Premiere Pro and After Effects'), h('p', {}, 'Caption without leaving your timeline or composition. Premiere Pro or After Effects 2022 or newer, Windows or Mac. One install covers both.')),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'modal-body' },
       h('ol', { class: 'panel-steps' },
-        h('li', {}, 'Close Premiere Pro.'),
+        h('li', {}, 'Close Premiere Pro and After Effects.'),
         h('li', {}, 'Run the line for your computer (no admin rights needed).'),
-        h('li', {}, 'Open Premiere Pro, then Window › Extensions › Capstudio.')),
-      cmd('Windows: in PowerShell', `irm ${site}/premiere/install.ps1 | iex`),
-      cmd('Mac: in Terminal', `curl -fsSL ${site}/premiere/install.sh | bash`),
-      h('p', { class: 'hint' }, 'In the panel: select a clip in the timeline, click “Caption the selected clip”, style it, then “Add to timeline”. The captions are placed on the track above the clip, with an editable caption track if you like. ',
-        h('a', { href: `${site}/premiere/capstudio-premiere.zip` }, 'Download the panel files'), ' to install by hand.'))));
+        h('li', {}, 'Open either app, then Window › Extensions › Capstudio.')),
+      cmd('Windows: in PowerShell', `irm ${site}/panel/install.ps1 | iex`),
+      cmd('Mac: in Terminal', `curl -fsSL ${site}/panel/install.sh | bash`),
+      h('p', { class: 'hint' }, 'Premiere Pro: select a clip, “Caption the selected clip”, style it, then “Add to timeline”: the captions go on the track above it. After Effects: select a footage layer, “Caption the selected layer”, then “Add to composition”: the captions arrive as editable, animated layers in a precomp above it. ',
+        h('a', { href: `${site}/panel/capstudio-panel.zip` }, 'Download the panel files'), ' to install by hand.'))));
   dlg.showModal();
 }
 
-// The first screen inside the Premiere Pro panel: pick the clip in the timeline.
+// The first screen inside the panel: pick the clip (Premiere) or layer (After Effects).
 function panelHome() {
   const langs = state.config.languages;
   const groups = {};
@@ -103,22 +103,25 @@ function panelHome() {
       ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
   langSel.value = state.language;
   langSel.addEventListener('change', () => set({ language: langSel.value }));
+  const label = inAE ? 'Caption the selected layer' : 'Caption the selected clip';
   const go = h('button', { class: 'btn brand lg', type: 'button', onclick: async () => {
     go.disabled = true;
-    go.textContent = 'Reading the clip…';
+    go.textContent = inAE ? 'Reading the layer…' : 'Reading the clip…';
     await captionSelectedClip();
     go.disabled = false;
-    go.textContent = 'Caption the selected clip';
-  } }, 'Caption the selected clip');
+    go.textContent = label;
+  } }, label);
+  const steps = inAE
+    ? ['Select the footage layer in your composition.', 'Click below. Capstudio writes captions for the part of the layer you use.',
+      'Style them, then “Add to composition”: they arrive as editable layers in a precomp above the layer.']
+    : ['Select the clip in your timeline.', 'Click below. Capstudio writes captions for the part of the clip you use.',
+      'Style them, then “Add to timeline”: they land on the track above the clip.'];
   return h('div', { class: 'panel-home' },
     h('div', { class: 'panel-home-card' },
-      h('span', { class: 'kicker' }, 'Capstudio for Premiere Pro'),
-      h('h1', {}, 'Caption a clip'),
-      h('ol', { class: 'panel-steps' },
-        h('li', {}, 'Select the clip in your timeline.'),
-        h('li', {}, 'Click below. Capstudio writes captions for the part of the clip you use.'),
-        h('li', {}, 'Style them, then “Add to timeline”: they land on the track above the clip.')),
-      h('label', { class: 'upload-options' }, h('span', {}, 'Language in the clip'), langSel),
+      h('span', { class: 'kicker' }, inAE ? 'Capstudio for After Effects' : 'Capstudio for Premiere Pro'),
+      h('h1', {}, inAE ? 'Caption a layer' : 'Caption a clip'),
+      h('ol', { class: 'panel-steps' }, steps.map((t) => h('li', {}, t))),
+      h('label', { class: 'upload-options' }, h('span', {}, inAE ? 'Language in the layer' : 'Language in the clip'), langSel),
       go,
       recentList()));
 }
@@ -179,7 +182,7 @@ function welcome() {
             h('span', {}, 'Captions that ', h('span', { class: 't-pop' }, 'POP'), ','),
             h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
           h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
-          upload, h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro? Get the Capstudio panel'), recentList()),
+          upload, h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro or After Effects? Get the Capstudio panel'), recentList()),
         h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
       ticker,
       h('section', { class: 'looks' },
@@ -350,7 +353,7 @@ function editor() {
       h('button', { class: 'btn ghost icon-only', id: 'redo', 'data-tip': 'Redo (Ctrl+Shift+Z)', 'data-tip-pos': 'below', html: icon('redo'), onclick: () => redo() }),
       h('button', { class: 'btn', id: 'next-video', hidden: true, html: '<span>Next video ›</span>',
         onclick: (e) => e.currentTarget.dataset.id && resumeProject(e.currentTarget.dataset.id, pickAgain) }),
-      h('button', { class: 'btn', id: 'new-video', html: `<span>${inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
+      h('button', { class: 'btn', id: 'new-video', html: `<span>${inAE ? 'Another layer' : inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
       h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
 
   const panel = h('aside', { class: 'panel', id: 'panel', role: 'tabpanel' });

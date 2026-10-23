@@ -658,18 +658,19 @@ def versioned_file(version: str, path: str):
     return FileResponse(f, headers={"Cache-Control": cache})
 
 
-# ------------------------------------------------------------------ Premiere Pro panel
+# ------------------------------------------------------------------ Premiere Pro / After Effects panel
 
-PANEL = ROOT / "premiere"
+PANEL = ROOT / "panel"
 
 
 def site_url(request: Request) -> str:
     return auth.public_url(request)
 
 
-@app.get("/premiere/capstudio-premiere.zip")
-def premiere_panel(request: Request):
-    """The panel's files (premiere/, without the installers), pointed at this server."""
+@app.get("/panel/capstudio-panel.zip")
+@app.get("/premiere/capstudio-premiere.zip")  # the first address, still in use by earlier installs
+def panel_zip(request: Request):
+    """The panel's files (panel/, without the installers), pointed at this server."""
     import io
     import zipfile
     buf = io.BytesIO()
@@ -683,12 +684,13 @@ def premiere_panel(request: Request):
                 data = re.sub(rb'data-site="[^"]*"', b'data-site="' + site_url(request).encode() + b'"', data)
             z.writestr(rel, data)
     return Response(buf.getvalue(), media_type="application/zip",
-                    headers={"Content-Disposition": 'attachment; filename="capstudio-premiere.zip"',
+                    headers={"Content-Disposition": 'attachment; filename="capstudio-panel.zip"',
                              "Cache-Control": "no-cache"})
 
 
+@app.get("/panel/install.{kind}")
 @app.get("/premiere/install.{kind}")
-def premiere_installer(kind: str, request: Request):
+def panel_installer(kind: str, request: Request):
     if kind not in ("ps1", "sh"):
         raise HTTPException(404, "Not found.")
     text = (PANEL / "install" / f"install.{kind}").read_text().replace("__SITE__", site_url(request))

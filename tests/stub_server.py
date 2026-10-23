@@ -51,10 +51,10 @@ from fastapi.staticfiles import StaticFiles  # noqa: E402
 
 main.app.router.routes.insert(0, __import__("starlette.routing", fromlist=["Mount"]).Mount(
     "/__parity", app=StaticFiles(directory=pathlib.Path(__file__).parent / "parity", html=True)))
-# The Premiere Pro panel with Premiere replaced by a stand-in (tests/premiere/), the
+# The Premiere Pro / After Effects panel with the app replaced by a stand-in (tests/panel/), the
 # panel's own files, and the test videos it "reads from disk".
 _here = pathlib.Path(__file__).parent
-for _path, _dir in (("/__premiere-panel", _here.parent / "premiere"), ("/__premiere", _here / "premiere"), ("/__media", _here / "media")):
+for _path, _dir in (("/__panel-src", _here.parent / "panel"), ("/__panel", _here / "panel"), ("/__panel-ae", _here / "ae"), ("/__media", _here / "media")):
     main.app.router.routes.insert(0, __import__("starlette.routing", fromlist=["Mount"]).Mount(
         _path, app=StaticFiles(directory=_dir, html=True)))
 transcribe.warm_up = lambda: None

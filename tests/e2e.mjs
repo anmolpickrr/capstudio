@@ -253,14 +253,14 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
 }
 
 // The Premiere Pro panel, end to end: the real panel bridge and host script with
-// Premiere replaced by a stand-in (tests/premiere/). A clip used from 0:03 of its
+// Premiere replaced by a stand-in (tests/panel/). A clip used from 0:03 of its
 // file sits at 0:02–0:08 on V1 of a 1080×1920, 25 fps sequence; V2 is busy there.
 {
   const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   try {
-    await page.goto(`${BASE}/__premiere/`);
+    await page.goto(`${BASE}/__panel/`);
     await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
     const app = page.frameLocator('iframe');
     await app.locator('button:has-text("Caption the selected clip")').click();
@@ -298,6 +298,77 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-premiere.png') }).catch(() => {});
     fail('Premiere panel', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// The same panel in After Effects, with After Effects replaced by a stand-in
+// (tests/ae/fake-ae.js). The selected layer plays 0:03–0:09 of its file at 0:02–0:08
+// of a 1080×1920, 25 fps comp. Editable layers first, then the transparent video.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__panel/ae.html`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the selected layer")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 120000 });
+    const frame = page.frames().find((f) => f.url().includes('host=aftereffects'));
+    const st = await frame.evaluate(async () => {
+      const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      state.watermark = { ...state.watermark, on: true };
+      return { w: state.project.info.width, h: state.project.info.height, caps: state.captions.map((c) => [c.start, c.end]) };
+    });
+    const diffs = [];
+    if (st.w !== 1080 || st.h !== 1920) diffs.push(`laid out at ${st.w}x${st.h}, expected the comp's 1080x1920`);
+    if (!st.caps.length || st.caps.some(([a, b]) => b <= 3 || a >= 9)) diffs.push('captions outside the used part (0:03–0:09) of the file');
+    await app.locator('#export-btn').click();
+    await app.locator('#export-dialog .btn.brand').click();
+    await app.locator('#export-status .result.ok').waitFor({ timeout: 120000 });
+    const built = await page.evaluate(() => {
+      const f = window.__fake, pre = f.comps[0], list = f.active.list.map((l) => ({ kind: l.kind, name: l.name, startTime: l.startTime,
+        stretch: l.stretch, inPoint: l.inPoint, outPoint: l.outPoint }));
+      return { list, pre: pre && { w: pre.width, h: pre.height, fps: pre.frameRate, n: pre.list.length, kinds: pre.list.map((l) => l.kind) },
+        imported: f.imported, written: Object.keys(window.__written), alerts: f.alerts };
+    });
+    if (!built.pre || built.pre.w !== 1080 || built.pre.h !== 1920 || built.pre.fps !== 25 || built.pre.n < st.caps.length) {
+      diffs.push(`precomp ${JSON.stringify(built.pre)}`);
+    }
+    if (!built.pre?.kinds.includes('text')) diffs.push('no text layers in the precomp');
+    const pl = built.list[1];
+    if (built.list[0].name !== 'Logo' || pl?.kind !== 'precomp' || built.list[2].name !== 'vert.webm') diffs.push(`layer order ${built.list.map((l) => l.name).join(', ')}`);
+    else if (pl.startTime !== -1 || pl.stretch !== 100 || pl.inPoint !== 2 || pl.outPoint !== 8) diffs.push(`precomp timing ${JSON.stringify(pl)}`);
+    if (!built.written.some((p) => p.startsWith('/work/Capstudio/Capstudio ') && p.endsWith('.png'))) diffs.push(`watermark not saved: ${built.written}`);
+    if (!built.pre?.kinds.includes('footage')) diffs.push('watermark not in the precomp');
+    if (built.alerts.length) diffs.push(`alerts: ${built.alerts.join(' | ')}`);
+    // the transparent video
+    await app.locator('#export-dialog label:has-text("Transparent video")').click();
+    await app.locator('#export-dialog .btn.brand').click();
+    await app.locator('#export-status .result.ok:has-text("Added above the layer")').waitFor({ timeout: 120000 });
+    const out = await page.evaluate(() => ({
+      list: window.__fake.active.list.map((l) => ({ kind: l.kind, name: l.name, startTime: l.startTime, inPoint: l.inPoint, outPoint: l.outPoint })),
+      files: Object.fromEntries(Object.entries(window.__written).filter(([k]) => k.endsWith('.mov')).map(([k, v]) => [k, Array.from(new Uint8Array(v))])) }));
+    const movPath = Object.keys(out.files)[0];
+    if (movPath !== '/work/Capstudio/vert captions.mov') diffs.push(`saved as ${movPath}`);
+    const mov = join(OUT, 'panel-ae.mov');
+    writeFileSync(mov, Buffer.from(out.files[movPath] || []));
+    const v = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries',
+      'stream=codec_name,width,height,r_frame_rate,nb_read_frames', '-of', 'json', mov])).streams[0];
+    if (v.codec_name !== 'qtrle' || v.width !== 1080 || v.height !== 1920 || v.r_frame_rate !== '25/1' || Number(v.nb_read_frames) !== 150) {
+      diffs.push(`captions video ${v.codec_name} ${v.width}x${v.height} ${v.r_frame_rate} ${v.nb_read_frames} frames, expected qtrle 1080x1920 25/1 150`);
+    }
+    // directly above the captioned layer (under the precomp added before)
+    const at = out.list.findIndex((l) => l.name === 'vert.webm'), fl = out.list[at - 1];
+    if (fl?.kind !== 'footage' || fl.name !== 'vert captions.mov' || fl.startTime !== 2 || fl.inPoint !== 2 || fl.outPoint !== 8) diffs.push(`video layer ${JSON.stringify(fl)}`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ After Effects panel: selected layer captioned for its used part, editable layers in a synced precomp above it (with the watermark), transparent video option');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-ae-panel.png') }).catch(() => {});
+    fail('After Effects panel', e.message.split('\n')[0]);
   } finally {
     await page.close();
   }

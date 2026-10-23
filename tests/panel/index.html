@@ -1,7 +1,7 @@
 <!doctype html>
-<!-- Test stand-in for the Premiere Pro panel: the real bridge (premiere/bridge.js) and
-     host script (premiere/host/host.jsx), with Premiere's DOM and the file system
-     replaced (fake-premiere.js). Served by tests/stub_server.py at /__premiere/. -->
+<!-- Test stand-in for the Premiere Pro panel: the real bridge (panel/bridge.js) and
+     host script (panel/host/host.jsx), with Premiere's DOM and the file system
+     replaced (fake-premiere.js). Served by tests/stub_server.py at /__panel/. -->
 <html lang="en">
 <head>
   <meta charset="utf-8">
@@ -22,8 +22,9 @@
         ],
       });
       Object.assign(window, { __fake: fake, app: fake.app, ProjectItemType: fake.ProjectItemType, Sequence: fake.Sequence, __written: {} });
-      (0, eval)(await (await fetch('/__premiere-panel/host/host.jsx')).text());
+      (0, eval)(await (await fetch('/__panel-src/host/host.jsx')).text());
       window.__capstudioHost = {
+        appName: () => 'PPRO',
         evalScript: (code) => Promise.resolve((0, eval)(code)),
         size: () => 1000,
         read: (p) => fetch('/__media/' + p.split('/').pop()).then((r) => r.arrayBuffer()),
@@ -33,7 +34,7 @@
         documents: () => '/Users/me/Documents',
       };
       const s = document.createElement('script');
-      s.src = '/__premiere-panel/bridge.js';
+      s.src = '/__panel-src/bridge.js';
       document.body.append(s);
     })();
   </script>

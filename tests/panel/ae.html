@@ -1,0 +1,42 @@
+<!doctype html>
+<!-- Test stand-in for the panel in After Effects: the real bridge (panel/bridge.js),
+     host script (panel/host/host.jsx) and layer builder, with After Effects' DOM and
+     the file system replaced (tests/ae/fake-ae.js). Served at /__panel/ae.html. -->
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <style>html, body { margin: 0; height: 100%; } iframe { display: block; width: 100%; height: 100%; border: 0; } .done { display: none; }</style>
+</head>
+<body>
+  <div id="loading"><p id="msg"></p></div>
+  <script src="/__panel-ae/fake-ae.js"></script>
+  <script>
+    (async () => {
+      document.documentElement.setAttribute('data-site', location.origin);
+      // vert.webm used from 0:03 to 0:09 of its file, at 0:02–0:08 of the comp
+      const fake = makeFakeAE([], {
+        name: 'Reel', width: 1080, height: 1920, fps: 25, duration: 20, projectPath: '/work/Reel.aep',
+        layers: [
+          { name: 'Logo', inPoint: 0, outPoint: 20 },
+          { name: 'vert.webm', path: '/media/vert.webm', startTime: -1, inPoint: 2, outPoint: 8, selected: true },
+        ],
+      });
+      Object.assign(window, fake.globals, { __fake: fake, __written: {} });
+      (0, eval)(await (await fetch('/__panel-src/host/host.jsx')).text());
+      window.__capstudioHost = {
+        appName: () => 'AEFT',
+        evalScript: (code) => Promise.resolve((0, eval)(code)),
+        size: () => 1000,
+        read: (p) => fetch('/__media/' + p.split('/').pop()).then((r) => r.arrayBuffer()),
+        write: (p, bytes) => { window.__written[p] = bytes; return Promise.resolve(); },
+        mkdir: () => {}, exists: (p) => p in window.__written,
+        join: (...a) => a.join('/'), dirname: (p) => p.replace(/\/[^/]*$/, ''), basename: (p) => p.split('/').pop(),
+        documents: () => '/Users/me/Documents',
+      };
+      const s = document.createElement('script');
+      s.src = '/__panel-src/bridge.js';
+      document.body.append(s);
+    })();
+  </script>
+</body>
+</html>

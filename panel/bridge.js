@@ -1,8 +1,14 @@
-// The panel's bridge between the Capstudio app (in the frame) and Premiere Pro.
+// The panel's bridge between the Capstudio app (in the frame) and Premiere Pro or
+// After Effects (whichever the panel is open in).
 //   app → panel  {type: 'capstudio:getClip', id}
-//                → reply with the sequence, the selected clip and its media file's bytes
-//   app → panel  {type: 'capstudio:place', id, mov, movName, srt, start, end, above, project}
-//                → the files are saved next to the project and placed on the timeline
+//                → the selected clip (Premiere) or layer (After Effects), its sequence
+//                  or composition, and its media file's bytes
+//   app → panel  {type: 'capstudio:place', id, mov, movName, srt, start, end, above, project, index, name}
+//                → the captions video (and SRT) saved next to the project and placed
+//                  on the timeline, or above the layer
+//   app → panel  {type: 'capstudio:aeBuild', id, builder, data, watermark, project, index, name}
+//                → After Effects: the captions built as editable layers in a precomp
+//                  above the layer (builder: static/ae/capstudio-ae.jsx)
 // Replies are {type: 'capstudio:reply', id, ok, data | error}.
 (function () {
   var SITE = document.documentElement.getAttribute('data-site');
@@ -13,6 +19,9 @@
     var req = window.cep_node ? window.cep_node.require : window.require;
     var fs = req('fs'), path = req('path'), os = req('os');
     return {
+      appName: function () {
+        try { return JSON.parse(window.__adobe_cep__.getHostEnvironment()).appName; } catch (e) { return 'PPRO'; }
+      },
       evalScript: function (code) {
         return new Promise(function (resolve) { window.__adobe_cep__.evalScript(code, resolve); });
       },
@@ -28,10 +37,12 @@
     };
   }());
 
+  var AE = host.appName() === 'AEFT';
+  var HOST = AE ? 'CapstudioAE' : 'Capstudio';
   var frame = document.createElement('iframe');
   frame.title = 'Capstudio';
   frame.allow = 'clipboard-write; autoplay';
-  frame.src = SITE + '/?host=premiere';
+  frame.src = SITE + '/?host=' + (AE ? 'aftereffects' : 'premiere');
   document.body.appendChild(frame);
   var shown = false;
   function show() {
@@ -44,8 +55,14 @@
     if (!shown) document.getElementById('msg').innerHTML = 'Capstudio is starting up. This can take a minute. If it doesn\'t open, check your internet connection.';
   }, 8000);
 
+  // JSON is valid ExtendScript once the two line-separator characters are escaped
+  var SEPARATORS = new RegExp('[' + String.fromCharCode(0x2028, 0x2029) + ']', 'g');
+  function literal(v) {
+    return JSON.stringify(v).replace(SEPARATORS, function (c) { return '\\u' + c.charCodeAt(0).toString(16); });
+  }
+
   function call(fn, args) {
-    var code = 'Capstudio.' + fn + '(' + args.map(function (a) { return JSON.stringify(a); }).join(',') + ')';
+    var code = HOST + '.' + fn + '(' + args.map(literal).join(',') + ')';
     return host.evalScript(code).then(function (raw) {
       var out;
       try { out = JSON.parse(raw); } catch (e) {
@@ -66,14 +83,21 @@
 
   function getClip(id) {
     return call('selection', []).then(function (sel) {
-      var size = host.size(sel.clip.path);
-      if (size > MAX_BYTES) throw new Error('That clip\'s media file is over 1.5 GB. Export the part you need and caption that instead.');
-      return host.read(sel.clip.path).then(function (bytes) {
-        var name = host.basename(sel.clip.path), ext = (name.split('.').pop() || '').toLowerCase();
-        reply(id, true, { sequence: sel.sequence, clip: sel.clip, project: sel.project, fileName: name,
-          fileType: TYPES[ext] || 'video/mp4', bytes: bytes }, [bytes]);
+      var media = (sel.clip || sel.layer).path;
+      var size = host.size(media);
+      if (size > MAX_BYTES) throw new Error('That media file is over 1.5 GB. Export the part you need and caption that instead.');
+      return host.read(media).then(function (bytes) {
+        var name = host.basename(media), ext = (name.split('.').pop() || '').toLowerCase();
+        reply(id, true, { app: AE ? 'aftereffects' : 'premiere', sequence: sel.sequence, clip: sel.clip, comp: sel.comp, layer: sel.layer,
+          project: sel.project, fileName: name, fileType: TYPES[ext] || 'video/mp4', bytes: bytes }, [bytes]);
       });
     });
+  }
+
+  function folderFor(project) {
+    var dir = host.join(project && /\.(prproj|aep|aepx)$/i.test(project) ? host.dirname(project) : host.documents(), 'Capstudio');
+    host.mkdir(dir);
+    return dir;
   }
 
   // A file name that doesn't overwrite an earlier export.
@@ -86,16 +110,32 @@
 
   function place(id, m) {
     return Promise.resolve().then(function () {
-      var project = m.project || '';
-      var dir = host.join(project && /\.prproj$/i.test(project) ? host.dirname(project) : host.documents(), 'Capstudio');
-      host.mkdir(dir);
+      var dir = folderFor(m.project || '');
       var clean = function (s) { return String(s).replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'captions'; };
       var mov = freeName(dir, clean(m.movName));
       var srt = m.srt ? mov.replace(/\.mov$/i, '.srt') : '';
       return host.write(mov, m.mov)
         .then(function () { return srt ? host.write(srt, new TextEncoder().encode(m.srt)) : null; })
-        .then(function () { return call('place', [mov, srt, m.start, m.end, m.above]); })
+        .then(function () { return AE ? call('placeFootage', [mov, m.index, m.name]) : call('place', [mov, srt, m.start, m.end, m.above]); })
         .then(function (out) { reply(id, true, { track: out.track, captions: out.captions, file: mov }); });
+    });
+  }
+
+  // After Effects: write the watermark next to the project, load the builder, and
+  // build the captions as layers in a precomp above the captioned layer.
+  function aeBuild(id, m) {
+    return Promise.resolve().then(function () {
+      var data = m.data;
+      var steps = Promise.resolve();
+      if (m.watermark && data.watermark) {
+        var png = host.join(folderFor(m.project || ''), 'Capstudio ' + data.watermark.file);
+        data.watermark.path = png;
+        steps = host.write(png, m.watermark);
+      }
+      return steps
+        .then(function () { return host.evalScript(m.builder.replace('/*CAPSTUDIO_DATA*/null', 'false')); })
+        .then(function () { return call('build', [data, m.index, m.name]); })
+        .then(function (out) { reply(id, true, { layers: out.layers, missing: out.missing, name: out.name }); });
     });
   }
 
@@ -103,7 +143,8 @@
     if (e.origin !== SITE || e.source !== frame.contentWindow) return;
     var m = e.data || {};
     if (m === 'capstudio-ready') return show();
-    var job = m.type === 'capstudio:getClip' ? getClip(m.id) : m.type === 'capstudio:place' ? place(m.id, m) : null;
+    var job = m.type === 'capstudio:getClip' ? getClip(m.id) : m.type === 'capstudio:place' ? place(m.id, m)
+      : m.type === 'capstudio:aeBuild' ? aeBuild(m.id, m) : null;
     if (job) job.catch(function (err) { reply(m.id, false, err && err.message ? err.message : String(err)); });
   });
 }());

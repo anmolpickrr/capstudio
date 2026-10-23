@@ -64,26 +64,33 @@ Upload → captions generated automatically → choose a style → customise →
 - **Odia** appears in the list as *not supported yet*, because the Whisper model can't transcribe it.
 - Every word is drawn in a font that can render it: fonts fall back per word. The font picker only lists fonts that support the captions' language.
 
-## Premiere Pro panel
+## Premiere Pro and After Effects panel
 
-`premiere/` is a panel for Premiere Pro 2022 and newer (CEP 11+, Windows and Mac). It shows the Capstudio app from the live site inside Premiere, so every feature works there, and adds the link to the timeline.
+`panel/` is one panel for Premiere Pro and After Effects 2022 and newer (CEP 11+, Windows and Mac). It shows the Capstudio app from the live site inside the app, so every feature works there, and adds the link to the timeline or composition. It sees which app it's open in and works the right way for each.
 
-- **Install:** the first page has an "Edit in Premiere Pro?" link with one line to run. On Windows that's `irm <site>/premiere/install.ps1 | iex` in PowerShell; on a Mac, `curl -fsSL <site>/premiere/install.sh | bash`. Each copies the panel into the user's CEP extensions folder and switches on Premiere's setting for panels from outside Adobe's store (`PlayerDebugMode`), with no admin rights. Then restart Premiere and open Window › Extensions › Capstudio. The server builds the download (`/premiere/capstudio-premiere.zip`) and the installers with its own address filled in.
-- **Use:**
+- **Install:** the first page has an "Edit in Premiere Pro or After Effects?" link with one line to run. On Windows that's `irm <site>/panel/install.ps1 | iex` in PowerShell; on a Mac, `curl -fsSL <site>/panel/install.sh | bash`. Each copies the panel into the user's CEP extensions folder and switches on the setting for panels from outside Adobe's store (`PlayerDebugMode`), with no admin rights. One install covers both apps. Then restart the app and open Window › Extensions › Capstudio. The server builds the download (`/panel/capstudio-panel.zip`) and the installers with its own address filled in. The older `/premiere/...` links still work.
+- **Use in Premiere Pro:**
   1. Select a clip in the timeline and click "Caption the selected clip". The panel reads the clip's media file, and captions are written only for the part of it used in the timeline (from its in-point, at its speed). They're laid out at the sequence's frame size.
   2. Style and check the captions as usual.
   3. Export › "Add to timeline" draws them (and the watermark, if it's on) as a transparent QuickTime Animation `.mov` at the sequence's frame size and rate, for the clip's span. It's saved in a `Capstudio` folder next to the project (or in Documents if the project isn't saved yet) and imported into a `Capstudio` bin. It's placed on the first video track above the clip that's empty for that span. Optionally an SRT is also added as an editable Premiere caption track.
+- **Use in After Effects:**
+  1. Select a footage layer in the open composition and click "Caption the selected layer". Captions are written for the part of the file the layer plays (from its in and out points and time stretch), laid out at the composition's size.
+  2. Style and check them as usual.
+  3. Export › "Add to composition" offers two ways:
+     - **Editable layers** (the default): the same text and shape layers as the After Effects script (below), keyframed on the composition's frames, built in a precomp placed directly above the layer. The precomp runs in the footage's own time and takes the layer's start time and stretch, so it stays in sync, and its in and out points match the layer's. The watermark, if on, is saved next to the project and added to the precomp. Fonts that aren't installed are named, with a button to download them. It's one undo step.
+     - **Transparent video:** the same `.mov` as in Premiere, imported and placed directly above the layer over its span.
 - **How it works:**
-  - `premiere/index.html` and `bridge.js` show the app in a frame.
-  - The app (`static/js/app/premiere.js`, in "Premiere mode" via `?host=premiere`) asks the bridge for the selected clip and sends back the finished files, by `postMessage`.
-  - The bridge reads and writes files with Node, and calls `premiere/host/host.jsx` (ExtendScript) for the selection, import and placement.
+  - `panel/index.html` and `bridge.js` show the app in a frame (`?host=premiere` or `?host=aftereffects`).
+  - The app (`static/js/app/premiere.js`) asks the bridge for the selected clip or layer and sends back the finished files, or the layer data, by `postMessage`.
+  - The bridge reads and writes files with Node, and calls `panel/host/host.jsx` (ExtendScript): `Capstudio` for Premiere, `CapstudioAE` for After Effects. For editable layers it first loads `static/ae/capstudio-ae.jsx` (the same builder as the downloadable script) into After Effects.
 - **Limits:**
-  - One clip at a time, using its own media file's audio. Clips whose sound comes from a separate audio clip, nested sequences and multicam clips aren't supported yet.
+  - One clip or layer at a time, using its own media file's audio. Clips whose sound comes from a separate audio clip, nested sequences, multicam clips and precomp layers aren't supported yet.
   - Media files over 1.5 GB are refused.
-  - Reversed clips are refused.
+  - Reversed clips and layers, and layers with time remapping, are refused.
+  - It has been tested against stand-ins for Premiere and After Effects, not yet in the real apps.
 - **Tests:**
-  - `node tests/premiere_host.mjs` checks that `host.jsx` is plain ES3 (ExtendScript) and runs it against a stand-in for Premiere's DOM (`tests/premiere/fake-premiere.js`).
-  - The browser test runs the whole loop through the real panel bridge, with Premiere and the file system replaced (`/__premiere/` on the test server).
+  - `node tests/panel_host.mjs` checks that `host.jsx` is plain ES3 (ExtendScript) and runs it against stand-ins for Premiere's DOM (`tests/panel/fake-premiere.js`) and After Effects' DOM (`tests/ae/fake-ae.js`).
+  - The browser test runs the whole loop through the real panel bridge, with the app and the file system replaced: `/__panel/` (Premiere) and `/__panel/ae.html` (After Effects, both ways of adding) on the test server.
 
 The After Effects script is tested the same way. `node tests/ae_script.mjs [script.jsx]` checks that the script is ES3 and runs it against a stand-in for After Effects' DOM (`tests/ae/fake-ae.js`). The browser test exports a zip from the app, runs its script that way, and draws the layer data the way After Effects composites it, comparing it with the preview for several templates.
 

@@ -11,7 +11,7 @@ import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.
 import { exportOverlay } from './overlayexport.js';
 import { exportAE } from './aeexport.js';
 import { exportFormats, formatsSection } from './formats.js';
-import { addToTimeline, inPremiere } from './premiere.js';
+import { addAsLayers, addToTimeline, fontsZip, inAE, inPremiere } from './premiere.js';
 import { icon } from './icons.js';
 import { emit, state } from './store.js';
 import { $, download, h, toast } from './ui.js';
@@ -37,6 +37,7 @@ async function captionFile(kind) {
 }
 
 export function openExport() {
+  if (inAE && state.premiere) return openCompExport();
   if (inPremiere && state.premiere) return openTimelineExport();
   dlg = $('#export-dialog');
   const info = state.project.info;
@@ -273,6 +274,87 @@ function openTimelineExport() {
         h('div', {}, h('b', {}, `Added on track V${r.track}`), h('br'),
           h('small', {}, `${r.captions ? 'With an editable caption track. ' : ''}Saved as ${r.file}`)))));
       toast(`Captions added to the timeline on V${r.track}.`, 'ok', 5000);
+    } catch (e) {
+      if (cancelled) { msg.textContent = 'Cancelled.'; return; }
+      status.replaceChildren(h('p', { class: 'note' }, e.message));
+      toast(e.message, 'error', 9000);
+    } finally {
+      running = false;
+      go.disabled = false;
+    }
+  }
+}
+
+// After Effects: the captions as editable layers in a precomp above the layer (the
+// default), or as a transparent video like in Premiere.
+function openCompExport() {
+  dlg = $('#export-dialog');
+  const { sequence: comp, clip } = state.premiere;
+  const fmt = (t) => `${Math.floor(t / 60)}:${(t % 60).toFixed(2).padStart(5, '0')}`;
+  const choice = (v, title, note, checked) => h('label', { class: 'choice' },
+    h('input', { type: 'radio', name: 'ae-kind', value: v, checked: checked ? true : null }),
+    h('span', {}, h('b', {}, title), h('small', {}, note)));
+  const kinds = h('div', { class: 'choices', role: 'radiogroup', 'aria-label': 'How to add the captions' },
+    choice('layers', 'Editable layers', 'A precomp of text and shape layers with the animation keyframed. Change any word, colour or timing in After Effects.', true),
+    choice('video', 'Transparent video', 'One layer, drawn exactly like the preview. Quickest; edit the captions here.', false));
+  const status = h('div', { id: 'export-status' });
+  const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Add to composition</span>', onclick: () => start() });
+  dlg.replaceChildren(h('div', { class: 'modal' },
+    h('div', { class: 'modal-head' },
+      h('div', {}, h('h2', {}, 'Add to composition'), h('p', {}, `Above “${clip.name}”, in sync with it.`)),
+      h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
+    h('div', { class: 'modal-body' },
+      h('div', { class: 'specs' },
+        h('span', {}, comp.name), h('span', {}, `${comp.width}×${comp.height}`), h('span', {}, `${+comp.fps.toFixed(3)} fps`),
+        h('span', {}, `${fmt(clip.start)} – ${fmt(clip.end)}`)),
+      kinds,
+      h('p', { class: 'note info' }, 'Files (the watermark, or the video) are saved in a Capstudio folder next to your project.'),
+      status,
+      h('div', { style: { display: 'flex', justifyContent: 'flex-end' } }, go))));
+  dlg.showModal();
+
+  async function start() {
+    const kind = kinds.querySelector('input:checked').value;
+    running = true; cancelled = false;
+    go.disabled = true;
+    const bar = h('i');
+    const msg = h('small', {}, kind === 'layers' ? 'Building the layers…' : 'Drawing the captions…');
+    const local = new AbortController();
+    const cancel = h('button', { class: 'btn sm', type: 'button', onclick: () => { cancelled = true; local.abort(); } }, 'Cancel');
+    status.replaceChildren(h('div', { class: 'result' }, h('div', { class: 'result-row' }, h('b', {}, 'Adding to the composition'),
+      kind === 'video' ? cancel : ''), h('div', { class: 'progress' }, bar), msg));
+    try {
+      await ensureFonts(fontsFor(state.captions, state.style));
+      if (kind === 'layers') {
+        bar.style.width = '50%';
+        const r = await addAsLayers();
+        state.project.exported = true;
+        emit('project');
+        const rows = [h('div', {}, h('b', {}, `Added “${r.name}”: ${r.layers} layer${r.layers === 1 ? '' : 's'}`), h('br'),
+          h('small', {}, 'Double-click the precomp to edit the captions.'))];
+        const out = [h('div', { class: 'result-row' }, ...rows)];
+        if (r.missing?.length) {
+          const fonts = r.fonts.filter((f) => r.missing.includes(f.name));
+          const get = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+            get.disabled = true;
+            download('capstudio-fonts.zip', await fontsZip(fonts.length ? fonts : r.fonts), 'application/zip');
+            get.disabled = false;
+          } }, 'Download the fonts');
+          out.push(h('p', { class: 'note' }, `Not installed on this computer: ${r.missing.join(', ')}. After Effects shows a stand-in until you install them and restart it.`), get);
+        }
+        status.replaceChildren(h('div', { class: 'result ok' }, ...out));
+        toast('Captions added to the composition.', 'ok', 5000);
+      } else {
+        const r = await addToTimeline({
+          editable: false, signal: local.signal,
+          onProgress: (p) => { bar.style.width = `${Math.round(p * 100)}%`; msg.textContent = `Drawing the captions… ${Math.round(p * 100)}%`; },
+        });
+        state.project.exported = true;
+        emit('project');
+        status.replaceChildren(h('div', { class: 'result ok' }, h('div', { class: 'result-row' },
+          h('div', {}, h('b', {}, 'Added above the layer'), h('br'), h('small', {}, `Saved as ${r.file}`)))));
+        toast('Captions added to the composition.', 'ok', 5000);
+      }
     } catch (e) {
       if (cancelled) { msg.textContent = 'Cancelled.'; return; }
       status.replaceChildren(h('p', { class: 'note' }, e.message));

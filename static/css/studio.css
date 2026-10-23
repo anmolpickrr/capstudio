@@ -439,6 +439,12 @@ details.more[open] > summary svg { transform: rotate(90deg); }
 details.more > .more-body { display: grid; gap: 12px; margin-top: 12px; }
 .hint { font-size: 12px; color: var(--text-3); margin: 0; }
 .note { font-size: 12.5px; border-radius: var(--r-sm); padding: 9px 11px; background: rgba(247, 185, 85, .08); border: 1px solid rgba(247, 185, 85, .25); color: #f3d494; }
+.choices { display: grid; gap: 8px; }
+.choice { display: flex; gap: 10px; align-items: flex-start; padding: 10px 12px; border: 1px solid var(--line-2); border-radius: var(--r-sm); cursor: pointer; }
+.choice:has(input:checked) { border-color: var(--brand); background: rgba(255, 255, 255, .03); }
+.choice input { margin-top: 3px; accent-color: var(--brand); }
+.choice span { display: grid; gap: 2px; }
+.choice small { color: var(--text-2); }
 .note.info { background: rgba(255, 255, 255, .04); border-color: var(--line-2); color: var(--text-2); }
 
 /* ------------------------------------------------------------ stage */
