@@ -740,8 +740,15 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .panel-home-card .btn.lg { justify-self: start; }
 .linkish { border: 0; background: none; padding: 0; color: var(--accent-hover); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .panel-link { justify-self: start; margin-top: 14px; display: block; }
-.cmd { display: flex; gap: 8px; align-items: center; }
-.cmd code { flex: 1; min-width: 0; overflow-x: auto; white-space: nowrap; padding: 8px 10px; border-radius: 8px; background: var(--bg-inset); border: 1px solid var(--line); font: 12px/1.4 ui-monospace, Menlo, Consolas, monospace; color: var(--text); }
+.cmd-block { display: grid; gap: 6px; min-width: 0; padding: 12px; border-radius: var(--r-sm); background: rgba(255, 255, 255, .03); border: 1px solid var(--line); }
+.cmd-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.cmd-block .hint { margin: 0; }
+.cmd-block code { display: block; min-width: 0; white-space: pre-wrap; word-break: break-all; padding: 8px 10px; border-radius: 8px; background: var(--bg-inset); border: 1px solid var(--line); font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--text); user-select: all; }
+.panel-help .modal-body { grid-template-columns: minmax(0, 1fr); max-height: calc(100vh - 180px); overflow-y: auto; }
+.panel-help-title { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.panel-uses { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
+.panel-use { display: grid; gap: 6px; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: 13px; }
+.panel-use ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--text-2); }
 
 /* ---------------------------------------------------------------- every format */
 .fmt-list { display: grid; gap: 10px; max-height: 46vh; overflow: auto; padding-right: 4px; }

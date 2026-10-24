@@ -70,26 +70,37 @@ const SCRIPTS = [
 function openPanelHelp() {
   const dlg = $('#export-dialog');
   const site = location.origin;
-  const cmd = (label, text) => {
+  const cmd = (label, how, text) => {
+    const copy = h('button', { class: 'btn sm', type: 'button', onclick: async () => {
+      try { await navigator.clipboard.writeText(text); copy.textContent = 'Copied'; setTimeout(() => { copy.textContent = 'Copy'; }, 2000); }
+      catch { getSelection().selectAllChildren(code); }
+    } }, 'Copy');
     const code = h('code', {}, text);
-    return h('div', { class: 'field' }, h('span', { class: 'label' }, label),
-      h('div', { class: 'cmd' }, code, h('button', { class: 'btn sm', type: 'button', onclick: async (e) => {
-        try { await navigator.clipboard.writeText(text); e.currentTarget.textContent = 'Copied'; } catch { /* select it instead */ }
-      } }, 'Copy')));
+    return h('div', { class: 'cmd-block' },
+      h('div', { class: 'cmd-head' }, h('b', {}, label), copy),
+      h('p', { class: 'hint' }, how),
+      code);
   };
-  dlg.replaceChildren(h('div', { class: 'modal' },
+  const use = (app, steps) => h('div', { class: 'panel-use' }, h('b', {}, app), h('ol', {}, steps.map((t) => h('li', {}, t))));
+  dlg.replaceChildren(h('div', { class: 'modal panel-help' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Capstudio for Premiere Pro and After Effects'), h('p', {}, 'Caption without leaving your timeline or composition. Premiere Pro or After Effects 2022 or newer, Windows or Mac. One install covers both.')),
+      h('div', {}, h('h2', {}, 'Capstudio for Premiere Pro and After Effects'),
+        h('p', {}, 'Caption without leaving your timeline or composition. Works in Premiere Pro and After Effects 2022 or newer, on Windows and Mac. One install covers both apps.')),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'modal-body' },
+      h('h3', { class: 'panel-help-title' }, 'Install (once, about a minute)'),
       h('ol', { class: 'panel-steps' },
         h('li', {}, 'Close Premiere Pro and After Effects.'),
-        h('li', {}, 'Run the line for your computer (no admin rights needed).'),
-        h('li', {}, 'Open either app, then Window › Extensions › Capstudio.')),
-      cmd('Windows: in PowerShell', `irm ${site}/panel/install.ps1 | iex`),
-      cmd('Mac: in Terminal', `curl -fsSL ${site}/panel/install.sh | bash`),
-      h('p', { class: 'hint' }, 'Premiere Pro: select a clip, “Caption the selected clip”, style it, then “Add to timeline”: the captions go on the track above it. After Effects: select a footage layer, “Caption the selected layer”, then “Add to composition”: the captions arrive as editable, animated layers in a precomp above it. ',
-        h('a', { href: `${site}/panel/capstudio-panel.zip` }, 'Download the panel files'), ' to install by hand.'))));
+        h('li', {}, 'Copy the line for your computer below, paste it into PowerShell (Windows) or Terminal (Mac), and press Enter. No admin rights needed.'),
+        h('li', {}, 'Open Premiere Pro or After Effects, then choose Window › Extensions › Capstudio.')),
+      cmd('Windows', 'Open the Start menu, type PowerShell, and press Enter. Then paste this line:', `irm ${site}/panel/install.ps1 | iex`),
+      cmd('Mac', 'Press ⌘ Space, type Terminal, and press Enter. Then paste this line:', `curl -fsSL ${site}/panel/install.sh | bash`),
+      h('h3', { class: 'panel-help-title' }, 'Use it'),
+      h('div', { class: 'panel-uses' },
+        use('Premiere Pro', ['Select a clip in the timeline.', 'Click “Caption the selected clip”, then style the captions.', 'Click Export › “Add to timeline”. The captions go on the track above the clip.']),
+        use('After Effects', ['Select a footage layer in the composition.', 'Click “Caption the selected layer”, then style the captions.', 'Click Export › “Add to composition”. The captions arrive as editable layers above it.'])),
+      h('p', { class: 'hint' }, 'Can’t run commands on your computer? ',
+        h('a', { href: `${site}/panel/capstudio-panel.zip` }, 'Download the panel files'), ' and ask IT to copy them into Adobe’s extensions folder.'))));
   dlg.showModal();
 }
 
