@@ -630,13 +630,17 @@ details.more > .more-body { display: grid; gap: 12px; margin-top: 12px; }
 .word svg { width: 11px; height: 11px; }
 
 /* ------------------------------------------------------------ dialogs, toasts */
-dialog { border: 0; padding: 0; background: transparent; color: inherit; max-width: 100vw; }
+dialog { border: 0; padding: 0; background: transparent; color: inherit; max-width: 100vw; max-height: 100dvh; overflow: visible; }
 dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
-.modal { width: min(560px, calc(100vw - 32px)); background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-xl); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .9); overflow: hidden; }
-.modal-head { padding: 20px 22px 6px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
+/* tall content scrolls inside the body; the title and close button stay put */
+.modal { width: min(560px, calc(100vw - 32px)); max-height: calc(100dvh - 32px); display: flex; flex-direction: column; background: var(--card); border: 1px solid var(--line-2); border-radius: var(--r-xl); box-shadow: 0 40px 100px -20px rgba(0, 0, 0, .9); overflow: hidden; }
+.modal-head { flex: none; padding: 20px 22px 6px; display: flex; align-items: flex-start; justify-content: space-between; gap: 12px; }
 .modal-head h2 { margin: 0; font: 800 20px var(--font-display); letter-spacing: -0.02em; }
 .modal-head p { margin: 4px 0 0; color: var(--text-2); font-size: 13px; }
-.modal-body { padding: 14px 22px 22px; display: grid; gap: 14px; }
+.modal-body { padding: 14px 22px 22px; display: grid; grid-template-columns: minmax(0, 1fr); gap: 14px; min-height: 0; overflow-y: auto; overscroll-behavior: contain; }
+.modal-body { scrollbar-width: thin; scrollbar-color: rgba(255, 255, 255, .28) transparent; }
+.modal-body::-webkit-scrollbar { width: 8px; }
+.modal-body::-webkit-scrollbar-thumb { background: rgba(255, 255, 255, .28); border-radius: 8px; }
 .option { display: grid; grid-template-columns: 22px 1fr; gap: 12px; padding: 14px; border-radius: var(--r); border: 1px solid var(--line-2); background: var(--bg-2); cursor: pointer; transition: border-color .15s, background .15s; }
 .option:hover { border-color: rgba(255, 255, 255, .2); }
 .option.disabled { opacity: .45; cursor: not-allowed; }
@@ -744,10 +748,10 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .cmd-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 .cmd-block .hint { margin: 0; }
 .cmd-block code { display: block; min-width: 0; white-space: pre-wrap; word-break: break-all; padding: 8px 10px; border-radius: 8px; background: var(--bg-inset); border: 1px solid var(--line); font: 12.5px/1.5 ui-monospace, Menlo, Consolas, monospace; color: var(--text); user-select: all; }
-.panel-help .modal-body { grid-template-columns: minmax(0, 1fr); max-height: calc(100vh - 180px); overflow-y: auto; }
 .panel-help-title { margin: 4px 0 0; font-size: 13px; font-weight: 600; color: var(--text); }
+.panel-help { width: min(620px, calc(100vw - 32px)); }
 .panel-uses { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 10px; }
-.panel-use { display: grid; gap: 6px; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: 13px; }
+.panel-use { display: grid; align-content: start; gap: 6px; padding: 12px; border-radius: var(--r-sm); border: 1px solid var(--line); font-size: 13px; }
 .panel-use ol { margin: 0; padding-left: 18px; display: grid; gap: 4px; color: var(--text-2); }
 
 /* ---------------------------------------------------------------- every format */
