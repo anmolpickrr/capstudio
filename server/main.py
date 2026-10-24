@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import auth, media, script, transcribe
+from . import auth, enhance, media, script, transcribe
 from .fonts import FONTS_DIR, catalogue
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -424,6 +424,19 @@ def convert_script(req: ConvertReq):
         return {"items": script.convert(req.mode, [i.model_dump() for i in req.items], GLOSSARY)}
     except script.ScriptError as e:
         raise HTTPException(503, str(e))
+
+
+class EnhanceReq(BaseModel):
+    items: list[ConvertItem] = Field(..., max_length=3000)
+    emoji: bool = True
+    keywords: bool = True
+
+
+@app.post("/api/enhance")
+def enhance_captions(req: EnhanceReq):
+    """Pick each caption's keyword and, now and then, an emoji (by AI when the Groq key is set)."""
+    items, source = enhance.enhance([i.model_dump() for i in req.items], emoji=req.emoji, keywords=req.keywords)
+    return {"items": items, "source": source}
 
 
 # ---------------------------------------------------------------- render

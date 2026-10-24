@@ -252,6 +252,82 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// Emojis and keywords: added for every caption by the (stand-in) AI in one undo
+// step, then one caption's emoji changed with the picker, drawn in the preview and
+// in the export script, and all removed.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const store = () => page.evaluate(async () => {
+    const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+    return { emoji: state.style.emoji, emphasis: state.style.emphasis,
+      caps: state.captions.map((c) => ({ id: c.id, start: c.start, emoji: c.words.find((w) => w.emoji)?.emoji || null, emoji_at: c.words.findIndex((w) => w.emoji),
+        stars: c.words.filter((w) => w.emph).length, words: c.words.map((w) => w.text) })) };
+  });
+  try {
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForSelector('#export-btn:not([disabled])', { timeout: 120000 });
+    await page.click('.tpl[data-id="hormozi"]');
+    await page.click('.rail button[data-tool="captions"]');
+    const before = await store();
+    await page.click('button:has-text("Add emojis & keywords")');
+    await page.waitForSelector('.toast.ok:has-text("Added")', { timeout: 20000 });
+    const after = await store();
+    const diffs = [];
+    const withEmoji = after.caps.filter((c) => c.emoji);
+    // the stand-in picks 👋 for "welcome" and 🎬 for "video"
+    const welcome = after.caps.find((c) => c.words.some((w) => /^welcome/i.test(w)));
+    if (welcome?.emoji !== '👋' || !/^welcome/i.test(welcome.words[welcome.emoji_at])) diffs.push(`welcome caption: ${JSON.stringify(welcome)}`);
+    if (!after.caps.some((c) => c.emoji === '🎬')) diffs.push('no 🎬 for "video"');
+    if (after.caps.some((c) => c.stars !== 1)) diffs.push('not one keyword per caption');
+    if (after.emoji !== 'above' || after.emphasis !== 'marked') diffs.push(`style emoji ${after.emoji}, emphasis ${after.emphasis}`);
+    // drawn in the preview: the emoji's shapes are in the stage while its word is spoken
+    const c0 = welcome;
+    await page.evaluate((t) => { document.querySelector('.frame video').currentTime = t; }, c0.start + 0.6);
+    await page.waitForTimeout(600);
+    const drawn = await page.evaluate(() => [...document.querySelectorAll('.frame svg path[fill="#EF9645"], .frame svg path[fill="#FFDC5D"]')]
+      .filter((p) => p.closest('g[display="none"]') === null).length);
+    if (!drawn) diffs.push('emoji not drawn in the preview');
+    // and in the export script, as drawings
+    const assDrawings = await page.evaluate(async () => {
+      const base = document.querySelector('script[type=module]').src.replace('app/main.js', '');
+      const { state } = await import(base + 'app/store.js');
+      const { toASS } = await import(base + 'engine/index.js');
+      const ass = toASS(state.captions, state.style, 1080, 1920, {});
+      // 👋's skin colour, #EF9645, is &H4596EF& in ASS
+      return ass.split('\n').filter((l) => l.includes('\\p1') && l.includes('\\1c&H4596EF&')).length;
+    });
+    if (!assDrawings) diffs.push('no emoji drawings in the export script');
+    // one undo puts captions and style back together
+    await page.keyboard.press('Control+z');
+    await page.waitForTimeout(300);
+    const undone = await store();
+    if (undone.caps.some((c) => c.emoji) || undone.emoji !== before.emoji || undone.emphasis !== before.emphasis) diffs.push('one undo did not restore captions and style');
+    await page.keyboard.press('Control+Shift+z');
+    await page.waitForTimeout(300);
+    // the picker: a rocket for a caption without an emoji
+    const plain = (await store()).caps.findIndex((c) => !c.emoji);
+    await page.locator('.cap').nth(plain).locator('.emoji-btn').click();
+    await page.fill('.emoji-pop input[type=search]', 'rocket');
+    await page.click('.emoji-pop .emoji-opt[title="rocket"]');
+    if ((await store()).caps[plain].emoji !== '🚀') diffs.push('picker did not set the emoji');
+    if (await page.locator('.emoji-pop').count()) diffs.push('picker still open');
+    // remove all
+    await page.click('button:has-text("Remove all emojis")');
+    if ((await store()).caps.some((c) => c.emoji)) diffs.push('emojis not removed');
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log(`✓ emojis & keywords: ${withEmoji.length} emojis and a keyword per caption in one undo step, drawn in the preview and the export script, picker, remove all`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-emoji.png') }).catch(() => {});
+    fail('emojis & keywords', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // The Premiere Pro panel, end to end: the real panel bridge and host script with
 // Premiere replaced by a stand-in (tests/panel/). A clip used from 0:03 of its
 // file sits at 0:02–0:08 on V1 of a 1080×1920, 25 fps sequence; V2 is busy there.
@@ -413,7 +489,21 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   const { templateById } = await import('/js/templates/library.js');
   const W = 1080, H = 1920, out = {};
   const words = 'Make every single video count for your brand today'.split(' ').map((t, i) => ({ text: t, start: 0.2 + i * 0.32, end: 0.2 + i * 0.32 + 0.3 }));
+  words[1].emoji = '🚀'; // an emoji too: drawn from the After Effects shapes below
   const captions = [{ id: 'a', start: 0.2, end: 1.6, words: words.slice(0, 4) }, { id: 'b', start: 1.6, end: 3.2, words: words.slice(4) }];
+  const shapePath = (paths) => {
+    const p = new Path2D();
+    for (const q of paths) {
+      const n = q.v.length;
+      p.moveTo(...q.v[0]);
+      for (let k = 1; k <= n; k++) {
+        const a = q.v[k - 1], b = q.v[k % n];
+        p.bezierCurveTo(a[0] + q.o[k - 1][0], a[1] + q.o[k - 1][1], b[0] + q.i[k % n][0], b[1] + q.i[k % n][1], b[0], b[1]);
+      }
+      p.closePath();
+    }
+    return p;
+  };
   const val = (keys, t) => {
     if (!keys) return null;
     if (keys.length === 1 || t <= keys[0][0]) return keys[0].slice(1);
@@ -439,7 +529,9 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
         const [blur] = val(L.keys.blur, t);
         cb.save(); cb.globalAlpha = op / 100; cb.translate(x, y); cb.rotate(rot * Math.PI / 180); cb.scale(s / 100, s / 100);
         if (blur > 0.05) cb.filter = `blur(${(blur / 2.4 * s / 100).toFixed(2)}px)`;
-        if (L.type === 'box') {
+        if (L.type === 'emoji') {
+          for (const sh of L.shapes) { cb.fillStyle = sh.color; cb.globalAlpha = (op / 100) * (sh.opacity / 100); cb.fill(shapePath(sh.paths)); }
+        } else if (L.type === 'box') {
           const [w, h] = val(L.keys.size, t), [r] = val(L.keys.radius, t);
           cb.fillStyle = L.color; cb.fill(new Path2D(roundedRect(w, h, r)));
         } else {
@@ -459,14 +551,16 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
       const mse = se / (W * H * 3);
       scores.push(+(mse ? 10 * Math.log10(255 * 255 / mse) : 99).toFixed(1));
     }
-    out[id] = { scores, layers: data.layers.length };
+    out[id] = { scores, layers: data.layers.length, emoji: data.layers.some((l) => l.type === 'emoji') };
   }
   return out;
 }, ['hormozi', 'karaoke', 'fastrr-pill', 'fastrr-marker', 'two-tier', 'popstar', 'serif-stack', 'big-word']);
     const low = Object.entries(res).filter(([, v]) => Math.min(...v.scores) < 28).map(([k, v]) => `${k} ${Math.min(...v.scores)} dB`);
+    const noEmoji = Object.entries(res).filter(([, v]) => !v.emoji).map(([k]) => k);
+    if (noEmoji.length) throw new Error(`no emoji layer for ${noEmoji.join(', ')}`);
     if (low.length) throw new Error(`layers drift from the preview: ${low.join(', ')}`);
     if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
-    console.log(`✓ After Effects: zip with script, font and watermark; the script builds every layer; layers match the preview (lowest ${Math.min(...Object.values(res).flatMap((v) => v.scores))} dB)`);
+    console.log(`✓ After Effects: zip with script, font and watermark; the script builds every layer; layers (with an emoji) match the preview (lowest ${Math.min(...Object.values(res).flatMap((v) => v.scores))} dB)`);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-ae.png') }).catch(() => {});
     fail('After Effects export', e.message.split('\n')[0]);

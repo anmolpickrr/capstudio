@@ -2,6 +2,7 @@
 // Computed once per caption and style, then shared by the SVG preview and the
 // ASS export, so both place every word in exactly the same spot.
 import { displayWord } from './chunk.js';
+import { captionEmoji } from './emoji.js';
 import { fontById, wordFont } from './fonts.js';
 import { textWidth } from './measure.js';
 
@@ -192,6 +193,18 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
   });
   const blockH = lines.length ? lines[lines.length - 1].bottom : 0;
   const blockW = Math.max(0, ...lines.map((l) => l.width));
+  // an emoji above or below the words; the words move over to keep both where the
+  // caption is anchored (on screen, and out of the safe zones)
+  const emoji = captionEmoji(caption, style);
+  const E = emoji ? fs * (style.emojiSize || 1.6) : 0, eGap = E * 0.14;
+  const below = style.emoji === 'below';
+  let shift = 0;
+  if (emoji) {
+    const room = E + eGap;
+    if (style.vPos === 'top') shift = below ? 0 : room;
+    else if (style.vPos === 'middle') shift = below ? -room / 2 : room / 2;
+    else shift = below ? -room : 0;
+  }
 
   // place the block
   let blockLeft;
@@ -202,6 +215,7 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
   if (style.vPos === 'top') blockTop = (style.vOffset / 100) * H;
   else if (style.vPos === 'middle') blockTop = H / 2 + (style.vOffset / 100) * H - blockH / 2;
   else blockTop = H - (style.vOffset / 100) * H - blockH;
+  blockTop += shift;
 
   // 'keyword' alignment: the keyword line is centred in the block, lines before
   // it start at the keyword's left edge and lines after it end at its right edge,
@@ -238,12 +252,19 @@ export function layoutCaption(caption, style, W, H, spaced = true) {
     left: Math.min(...lines.map((l) => l.left)), right: Math.max(...lines.map((l) => l.right)),
     top: lines.length ? lines[0].top : blockTop, bottom: lines.length ? lines[lines.length - 1].bottom : blockTop,
   };
+  let emojiRect = null;
+  if (emoji) {
+    const cx = (block.left + block.right) / 2;
+    emojiRect = { x: cx - E / 2, y: below ? block.bottom + eGap : block.top - eGap - E, w: E, h: E };
+    block.left = Math.min(block.left, emojiRect.x); block.right = Math.max(block.right, emojiRect.x + E);
+    block.top = Math.min(block.top, emojiRect.y); block.bottom = Math.max(block.bottom, emojiRect.y + E);
+  }
   // Origin of caption-level scaling: the block's centre, on its anchored edge.
   const origin = {
     x: (block.left + block.right) / 2,
     y: style.vPos === 'top' ? block.top : style.vPos === 'middle' ? (block.top + block.bottom) / 2 : block.bottom,
   };
-  return { ref: r, fs, words, lines, block, origin, font: fontById(style.font) };
+  return { ref: r, fs, words, lines, block, origin, font: fontById(style.font), emoji: emoji && { ...emoji, rect: emojiRect } };
 }
 
 // All fonts a set of captions will use at this style (to load before layout).

@@ -1,9 +1,10 @@
-// Captions: the language and script, a check of doubtful words, and every
-// caption's text and timing. Click a word to star it for keyword emphasis;
+// Captions: the language and script, emojis and keywords, a check of doubtful
+// words, and every caption's text and timing. Click a word to star it for keyword emphasis;
 // underlined words are ones the speech engine wasn't sure about, and dotted
 // ones look like a misspelt team glossary name.
 import { retext, retime, uid } from '../../engine/chunk.js';
 import { api } from '../api.js';
+import { emojiIcon, enhanceCaptions, enhanceMessage, openEmojiPicker, removeEmojis } from '../emojis.js';
 import { icon } from '../icons.js';
 import { applyHint, glossaryHint, isHindiProject, isUnsure, rebuild, toCheck } from '../review.js';
 import { generate } from '../session.js';
@@ -83,6 +84,37 @@ async function convertScript(mode, seg, note) {
     note.textContent = was;
     buttons.forEach((b) => { b.disabled = b.dataset.mode !== 'roman' && !state.config.scriptConvert; });
   }
+}
+
+// ---------------------------------------------------------------- emojis and keywords
+
+function enhanceSection() {
+  const box = (label, checked) => h('label', { class: 'checkline' }, h('input', { type: 'checkbox', checked: checked ? true : null }), h('span', {}, label));
+  const emo = box('Emojis', true), kw = box('Keywords', true);
+  const note = h('p', { class: 'hint' }, state.config.scriptConvert
+    ? 'AI stars the word that matters in each caption and adds an emoji where it fits. Ctrl+Z puts it back.'
+    : 'Stars the word that matters in each caption and adds an emoji where a word matches. Ctrl+Z puts it back.');
+  const go = h('button', { class: 'btn primary enhance-go', type: 'button', html: `${icon('sparkle')}<span>Add emojis & keywords</span>`, onclick: async () => {
+    const emoji = emo.querySelector('input').checked, keywords = kw.querySelector('input').checked;
+    if (!emoji && !keywords) return toast('Pick emojis, keywords or both.');
+    go.disabled = true;
+    const label = go.querySelector('span').textContent;
+    go.querySelector('span').textContent = 'Picking…';
+    try {
+      toast(enhanceMessage(await enhanceCaptions({ emoji, keywords })), 'ok', 4500);
+    } catch (e) {
+      toast(`Couldn’t add emojis and keywords: ${e.message}`, 'error', 7000);
+    } finally {
+      go.disabled = false;
+      go.querySelector('span').textContent = label;
+    }
+  } });
+  return section('Emojis & keywords',
+    h('div', { class: 'enhance-row' }, emo, kw), go, note,
+    h('button', { class: 'linkish', type: 'button', onclick: () => {
+      if (!state.captions.some((c) => c.words.some((w) => w.emoji))) return toast('There are no emojis to remove.');
+      removeEmojis();
+    } }, 'Remove all emojis'));
 }
 
 // ---------------------------------------------------------------- check
@@ -193,7 +225,7 @@ function captionCard(c, i) {
   const emphOn = state.style.emphasis !== 'none';
   const words = h('div', { class: 'words' }, c.words.map((w, wi) => h('button', {
     type: 'button', 'data-i': wi,
-    class: `word${w.emph ? ' emph' : ''}${isUnsure(w) ? ' unsure' : ''}${glossaryHint(c.words, wi) ? ' name-hint' : ''}${reviewing?.cid === c.id && reviewing.wi === wi ? ' reviewing' : ''}`,
+    class: `word${w.emph ? ' emph' : ''}${w.emoji ? ' has-emoji' : ''}${isUnsure(w) ? ' unsure' : ''}${glossaryHint(c.words, wi) ? ' name-hint' : ''}${reviewing?.cid === c.id && reviewing.wi === wi ? ' reviewing' : ''}`,
     title: `${fmtTime(w.start)}${isUnsure(w) ? ' · the speech engine was unsure about this word' : ''}${glossaryHint(c.words, wi) ? ` · did you mean ${glossaryHint(c.words, wi).term}?` : ''}${emphOn ? ' · click to star for emphasis' : ''}`,
     html: `${w.emph ? icon('star') : ''}<span></span>`,
     onclick: () => {
@@ -203,12 +235,21 @@ function captionCard(c, i) {
         ? { ...x, words: x.words.map((y, k) => (k === wi ? { ...y, emph: !y.emph } : y)) } : x)));
     },
   })));
-  words.querySelectorAll('.word span').forEach((s, k) => { s.textContent = c.words[k].text; });
+  words.querySelectorAll('.word span').forEach((s, k) => {
+    s.textContent = c.words[k].text;
+    if (c.words[k].emoji) s.after(emojiIcon(c.words[k].emoji, 14));
+  });
+  const emojiNow = c.words.find((w) => w.emoji)?.emoji;
+  const emojiBtn = h('button', { class: `btn ghost sm icon-only emoji-btn${emojiNow ? ' on' : ''}`, type: 'button',
+    'data-tip': emojiNow ? 'Change emoji' : 'Add an emoji', 'aria-label': emojiNow ? 'Change emoji' : 'Add an emoji',
+    html: emojiNow ? '' : icon('smile'), onclick: () => openEmojiPicker(emojiBtn, c) });
+  if (emojiNow) emojiBtn.append(emojiIcon(emojiNow, 18));
 
   const act = (ico, tip, fn) => h('button', { class: 'btn ghost sm icon-only', type: 'button', 'data-tip': tip, html: icon(ico), onclick: fn });
   const card = h('div', { class: 'cap', 'data-id': c.id },
     h('div', { class: 'cap-top' }, start, h('span', { class: 'arrow' }, '→'), end, h('span', { class: 'grow' }),
       act('play', 'Play', () => seek?.(c.start + 0.01, true)),
+      emojiBtn,
       act('split', 'Split in two', () => split(c)),
       act('merge', 'Merge with next', () => merge(c)),
       act('trash', 'Delete', () => setCaptions(state.captions.filter((x) => x.id !== c.id)))),
@@ -265,7 +306,7 @@ export const captionsPanel = {
     list = h('div', { class: 'cap-list' });
     root = h('div', { style: { display: 'contents' } },
       h('div', { class: 'panel-head' }, h('h2', {}, 'Captions'), h('span', { class: 'hint', id: 'cap-count' })),
-      h('div', { class: 'panel-body', id: 'cap-body' }, languageSection(), scriptSection(), toolsSection(), list));
+      h('div', { class: 'panel-body', id: 'cap-body' }, languageSection(), scriptSection(), enhanceSection(), toolsSection(), list));
     container.replaceChildren(root);
     renderList();
     this.update('count');

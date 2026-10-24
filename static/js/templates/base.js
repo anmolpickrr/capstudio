@@ -25,6 +25,9 @@ export const DEFAULT_STYLE = {
   emphasis: 'none',          // none | auto | marked
   emphColor: null, emphScale: 1, emphFont: null, emphBg: false, emphBgColor: '#FFE14D',
   emphLine: false,           // the emphasised word gets a line of its own
+  // emojis (word.emoji): drawn above or below the words, at this many times the text size
+  emoji: 'above',            // off | above | below
+  emojiSize: 1.6,
   stack: false,              // every word on its own line
   // spoken-word highlight
   highlight: 'none',         // none | color | pill | sweep | progressive

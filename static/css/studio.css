@@ -771,3 +771,21 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .q-bar { display: block; height: 3px; border-radius: 3px; background: rgba(255, 255, 255, .08); overflow: hidden; margin-top: 4px; width: 160px; }
 .q-bar i { display: block; height: 100%; background: var(--accent); transition: width .3s; }
 .recent { max-height: 360px; overflow: auto; }
+
+/* emojis & keywords */
+.enhance-row { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 18px; }
+.enhance-go { width: 100%; justify-content: center; }
+.checkline { display: inline-flex; align-items: center; gap: 6px; font-size: 13px; color: var(--text-2); cursor: pointer; }
+.checkline input { accent-color: var(--brand); }
+.emoji-icon { display: block; flex: none; }
+.words .word .emoji-icon { display: inline-block; margin-left: 3px; vertical-align: -2px; }
+.emoji-btn.on { opacity: 1; }
+.emoji-pop { position: fixed; z-index: 60; display: flex; flex-direction: column; gap: 8px; padding: 10px; background: var(--bg-2);
+  border: 1px solid var(--line-2); border-radius: var(--r-sm); box-shadow: 0 18px 50px rgba(0, 0, 0, .45); }
+.emoji-pop-head { display: flex; gap: 8px; }
+.emoji-pop-head .input { flex: 1; min-width: 0; }
+.emoji-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(38px, 1fr)); gap: 4px; overflow-y: auto; min-height: 0; }
+.emoji-opt { display: grid; place-items: center; height: 38px; border-radius: 8px; border: 1px solid transparent; background: none; cursor: pointer; }
+.emoji-opt:hover, .emoji-opt:focus-visible { background: rgba(255, 255, 255, .06); }
+.emoji-opt.on { border-color: var(--brand); }
+.emoji-pop .hint { margin: 0; font-size: 11px; }

@@ -26,6 +26,10 @@ const SAMPLE = {
       stroke: '#000000', style: [[0, '#FFFFFF', 4], [1, '#FFE14D', 0]], in: 0, out: 2, name: 'Hello',
       keys: { position: [[0, 540, 960], [0.3, 540, 940]], scale: [[0, 80], [0.3, 100]], rotation: [[0, 0]], opacity: [[0, 100]], blur: [[0, 6], [0.3, 0]],
         mask: [[0, -50, -90, 0, 120], [1, -50, -90, 100, 120]] } },
+    { type: 'emoji', char: '🔥', in: 0.5, out: 2, name: 'emoji',
+      shapes: [{ color: '#F4900C', opacity: 100, paths: [{ v: [[0, 0], [36, 0], [18, 36]], i: [[0, 0], [0, 0], [6, 0]], o: [[0, 0], [0, 0], [-6, 0]], closed: true }] },
+        { color: '#FFCC4D', opacity: 50, paths: [{ v: [[10, 10], [26, 10], [18, 30]], i: [[0, 0], [0, 0], [0, 0]], o: [[0, 0], [0, 0], [0, 0]], closed: true }] }],
+      keys: { position: [[0.5, 500, 700]], scale: [[0.5, 120], [0.7, 480]], rotation: [[0.5, 0]], opacity: [[0.5, 0], [0.6, 100]], blur: [[0.5, 0]] } },
   ],
 };
 
@@ -63,6 +67,20 @@ const data = template ? SAMPLE : JSON.parse(src.slice(src.lastIndexOf('}(') + 2,
   check('fonts set when installed', texts.every((l) => l.property('ADBE Text Properties').property('ADBE Text Document').value.font !== 'ArialMT'));
   check('the undo group is closed', fake.undoDepth() === 0);
   if (data.watermark) check('the watermark is imported from the script\'s folder', fake.imported[0] === `/work/export/${data.watermark.file}` && comp.list[comp.list.length - 1].kind === 'footage');
+  if (data.layers.some((l) => l.type === 'emoji')) {
+    // shape layers: one group per coloured shape, the front-most first
+    const shaped = comp.list.filter((l) => l.kind === 'shape' && l.property('ADBE Root Vectors Group').added.length
+      && l.property('ADBE Root Vectors Group').added[0].property('ADBE Vectors Group').added.some((p) => p.name === 'ADBE Vector Shape - Group'));
+    const want = data.layers.filter((l) => l.type === 'emoji');
+    const ok = shaped.length === want.length && shaped.every((l, i) => {
+      const d = [...want].reverse()[i], groups = l.property('ADBE Root Vectors Group').added;
+      const front = groups[0].property('ADBE Vectors Group').added;
+      const shape = front[0].property('ADBE Vector Shape')._value;
+      return groups.length === d.shapes.length && shape.vertices.length === d.shapes[d.shapes.length - 1].paths[0].v.length && shape.closed
+        && front[front.length - 1].property('ADBE Vector Fill Color')._value.length === 3;
+    });
+    check('emojis are shape layers with their coloured shapes', ok, `${shaped.length} of ${want.length}`);
+  }
   if (data.layers.some((l) => l.keys.mask)) {
     check('karaoke sweeps get an animated mask', comp.list.some((l) => l.property('ADBE Mask Parade').added.length
       && l.property('ADBE Mask Parade').added[0].property('ADBE Mask Shape').keys.length > 1));

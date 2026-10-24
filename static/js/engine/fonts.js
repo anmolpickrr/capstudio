@@ -1,6 +1,7 @@
 // Font registry: the catalogue from the server, @font-face loading, script
 // coverage, and per-word fallback. Every caption word is drawn with a font that
 // can actually render it, in the preview and in the export alike.
+import { emojiTable, ensureEmoji } from './emoji.js';
 
 let FONTS = [];
 const BY_ID = new Map();
@@ -118,7 +119,11 @@ export function fontsSupporting(texts) {
 export function isLoaded(font) { return loaded.has(font.id); }
 
 // Loads the given fonts (no-op for ones already loaded).
+// (and the emoji shapes, which are drawn like letters: every caller that gets the
+// fonts ready before drawing gets them too). True when something new was loaded.
 export async function ensureFonts(fonts) {
+  const hadEmoji = !!emojiTable();
+  await ensureEmoji();
   const pending = [...new Set(fonts)].filter((f) => f && !loaded.has(f.id));
   await Promise.all(pending.map(async (f) => {
     try {
@@ -126,5 +131,5 @@ export async function ensureFonts(fonts) {
       loaded.add(f.id);
     } catch { /* leave unloaded; measurement falls back and is redone later */ }
   }));
-  return pending.length > 0;
+  return pending.length > 0 || (!hadEmoji && !!emojiTable());
 }

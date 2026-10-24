@@ -2,6 +2,7 @@
 // (ffmpeg's subtitle renderer) burns into the video. Each element becomes one
 // event per time step, positioned and styled from the same element states the
 // preview draws, so the two match.
+import { pathCommands } from './emoji.js';
 import { animating, breakpoints } from './motion.js';
 import { buildScene, elementState, GRADIENT_BANDS } from './scene.js';
 import { bandColors } from './svg.js';
@@ -29,6 +30,15 @@ function drawing(w, h, r) {
     + `l ${f(w)} ${f(h - r)} b ${f(w)} ${f(h - k)} ${f(w - k)} ${f(h)} ${f(w - r)} ${f(h)} `
     + `l ${f(r)} ${f(h)} b ${f(k)} ${f(h)} 0 ${f(h - k)} 0 ${f(h - r)} `
     + `l 0 ${f(r)} b 0 ${f(k)} ${f(k)} 0 ${f(r)} 0`;
+}
+
+// An emoji shape as ASS drawing commands (cached on the element).
+function drawingOf(el, k) {
+  el.ass ||= el.layers.map(([, d]) => pathCommands(d).map(([c, ...v]) => {
+    if (c === 'Z') return '';
+    return `${c === 'M' ? 'm' : c === 'L' ? 'l' : 'b'} ${v.map(n2).join(' ')}`;
+  }).filter(Boolean).join(' '));
+  return el.ass[k];
 }
 
 // Tags that move one value linearly from a to b over the event.
@@ -62,6 +72,12 @@ function eventsFor(el, a, b, layer) {
   const rot = s0.rot ? `\\frz${n2(-s0.rot)}` : '';
   const head = (tags) => `Dialogue: ${layer},${start},${end},W,,0,0,0,,{${tags}}`;
 
+  if (el.kind === 'emoji') {
+    // one drawing per shape, stacked in order (libass draws a drawing from its own 0,0)
+    const blur = (s0.blur || s1.blur) ? animated('blur', s0.blur, s1.blur, dur) : '';
+    return el.layers.map(([c, d, a], k) => `Dialogue: ${layer + k},${start},${end},W,,0,0,0,,{${pos(7)}${scale}\\bord0\\shad0`
+      + `\\1c${color(c)}\\1a&H${alphaHex(a ?? 1).toString(16).padStart(2, '0').toUpperCase()}&${fade}${blur}${rot}\\p1}${drawingOf(el, k)}`);
+  }
   if (el.kind === 'box') {
     return [`${head(`${pos(7)}${scale}\\bord0\\shad0\\1c${color(s0.color)}\\1a&H00&${fade}${rot}\\p1`)}${drawing(s0.rect.w, s0.rect.h, s0.radius)}`];
   }

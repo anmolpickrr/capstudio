@@ -3,6 +3,7 @@
 // shape layer. Its position, scale, rotation, opacity, blur, colours and clip are
 // keyframed from the same element states the preview draws, sampled every frame
 // and thinned to the keyframes that matter. static/ae/capstudio-ae.jsx builds them.
+import { pathCommands } from './emoji.js';
 import { buildScene, elementState } from './scene.js';
 
 const r2 = (v) => Math.round(v * 100) / 100;
@@ -86,6 +87,40 @@ function boxLayer(e, times, st) {
   };
 }
 
+// An emoji's outlines as After Effects shapes: vertices with in and out tangents
+// (relative to each vertex), one closed path per subpath.
+export function aeShapes(d) {
+  const paths = [];
+  let cur = null;
+  const end = () => {
+    if (!cur || cur.v.length < 2) { cur = null; return; }
+    const n = cur.v.length, a = cur.v[0], b = cur.v[n - 1];
+    if (Math.abs(a[0] - b[0]) < 1e-3 && Math.abs(a[1] - b[1]) < 1e-3) { cur.i[0] = cur.i[n - 1]; cur.v.pop(); cur.i.pop(); cur.o.pop(); }
+    cur.closed = true;
+    paths.push(cur);
+    cur = null;
+  };
+  for (const [c, ...v] of pathCommands(d)) {
+    if (c === 'M') { end(); cur = { v: [[r2(v[0]), r2(v[1])]], i: [[0, 0]], o: [[0, 0]] }; }
+    else if (c === 'L') { cur.v.push([r2(v[0]), r2(v[1])]); cur.i.push([0, 0]); cur.o.push([0, 0]); }
+    else if (c === 'C') {
+      const p = cur.v[cur.v.length - 1];
+      cur.o[cur.o.length - 1] = [r2(v[0] - p[0]), r2(v[1] - p[1])];
+      cur.v.push([r2(v[4]), r2(v[5])]); cur.i.push([r2(v[2] - v[4]), r2(v[3] - v[5])]); cur.o.push([0, 0]);
+    } else end();
+  }
+  end();
+  return paths;
+}
+
+function emojiLayer(e, times, st) {
+  return {
+    type: 'emoji', char: e.char,
+    shapes: e.layers.map(([c, d, a]) => ({ color: c, opacity: Math.round((a ?? 1) * 100), paths: aeShapes(d) })),
+    keys: common(times, st),
+  };
+}
+
 // All captions as layer data for the After Effects script.
 export function toAE(captions, style, W, H, { fps = 30, duration, name = 'Captions', spaced = true } = {}) {
   const layers = [];
@@ -102,12 +137,13 @@ export function toAE(captions, style, W, H, { fps = 30, duration, name = 'Captio
       const raw = times.map((t) => elementState(scene, e, t));
       if (!raw.some((s) => s.visible)) return;
       const st = filled(raw);
-      const layer = e.kind === 'box' ? boxLayer(e, times, st) : textLayer(e, times, st);
+      const layer = e.kind === 'box' ? boxLayer(e, times, st) : e.kind === 'emoji' ? emojiLayer(e, times, st) : textLayer(e, times, st);
       if (layer.type === 'text') fonts.set(layer.fontFile, { file: layer.fontFile, ps: layer.font, name: layer.fontName });
       layer.in = r4(c.start);
       // keyframe times stay exact: rounding would move them off the frames
       layer.out = r4(c.end);
-      layer.name = `${c.words.map((w) => w.text).join(' ').slice(0, 40)} · ${layer.type === 'text' ? `${e.text}${e.role !== 'main' ? ` (${e.role})` : ''}` : `${e.scope} box`}`;
+      const what = layer.type === 'text' ? `${e.text}${e.role !== 'main' ? ` (${e.role})` : ''}` : layer.type === 'emoji' ? `emoji ${e.char}` : `${e.scope} box`;
+      layer.name = `${c.words.map((w) => w.text).join(' ').slice(0, 40)} · ${what}`;
       layers.push(layer);
     });
   }

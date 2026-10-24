@@ -38,6 +38,22 @@ export const WORD_IN = {
   blur: { label: 'Blur in', opacity: [[0, 0], [0.18, 1, 'out']], blur: [[0, 10], [0.26, 0, 'out']], dy: [[0, 0.008], [0.26, 0, 'out']] },
 };
 
+// an emoji pops in when its word is spoken
+export const EMOJI_IN = { opacity: [[0, 0], [0.05, 1]], scale: [[0, 0.3], [0.14, 1.18, 'out'], [0.24, 1, 'inout']] };
+
+export function emojiAppears(caption) {
+  const w = caption.words.find((x) => x.emoji);
+  return w ? Math.max(caption.start, Math.min(w.start, caption.end - 0.3)) : null;
+}
+
+export function emojiMotion(style, caption, t) {
+  const at = emojiAppears(caption), speed = style.speed || 1;
+  if (at === null || t < at) return { visible: false, scale: 1, opacity: 0 };
+  return { visible: true, scale: track(scaled(EMOJI_IN.scale, speed), t - at), opacity: track(scaled(EMOJI_IN.opacity, speed), t - at) };
+}
+
+const emojiOn = (style, caption) => style.emoji && style.emoji !== 'off' && caption.words.some((w) => w.emoji);
+
 export const CASCADE_GAP = 0.07; // seconds between words for "cascade" entrances
 const HL_TWEEN = 0.07;           // active-word grow/shrink time
 
@@ -159,6 +175,10 @@ export function breakpoints(style, caption) {
     pts.add(start); pts.add(until); pts.add(sweepEnd);
     if ((style.hlScale || 1) !== 1) { pts.add(start + HL_TWEEN / speed); pts.add(until + HL_TWEEN / speed); }
   });
+  if (emojiOn(style, caption)) {
+    const at = emojiAppears(caption);
+    for (const [t] of EMOJI_IN.scale) pts.add(at + t / speed);
+  }
   return [...pts].filter((t) => t >= caption.start && t <= caption.end).sort((a, b) => a - b);
 }
 const start0 = (w) => w.start;
@@ -168,6 +188,10 @@ export function animating(style, caption, t) {
   const speed = style.speed || 1;
   const pin = CAPTION_IN[style.animIn] || CAPTION_IN.none;
   if (t - caption.start < presetDuration(pin, speed)) return true;
+  if (emojiOn(style, caption)) {
+    const at = emojiAppears(caption);
+    if (t >= at && t - at < presetDuration(EMOJI_IN, speed)) return true;
+  }
   const pout = CAPTION_OUT[style.animOut] || CAPTION_OUT.none;
   const outLen = Math.min(presetDuration(pout, speed), (caption.end - caption.start) / 3);
   if (outLen > 0 && caption.end - t < outLen) return true;

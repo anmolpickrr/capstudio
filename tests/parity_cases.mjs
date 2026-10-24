@@ -6,6 +6,7 @@ const words = (text, start = 0.2, step = 0.32) => text.split(' ').map((w, i) => 
 const cap = (text, opts = {}) => {
   const ws = words(text, opts.start, opts.step);
   if (opts.emph) opts.emph.forEach((i) => { ws[i].emph = true; });
+  if (opts.emoji) ws[opts.emoji[0]].emoji = opts.emoji[1];
   return { id: 'p1', start: ws[0].start, end: ws[ws.length - 1].end + 0.4, words: ws };
 };
 
@@ -34,6 +35,14 @@ export const CASES = [
     style: { font: 'Montserrat-ExtraBold', size: 64, align: 'left', hPos: 'left', hOffset: 6, outline: 4, width: 50 } },
   { name: 'word-boxes', W: 1280, H: 720, t: 1.0, caption: cap('Every word in its own tile'),
     style: { font: 'SpaceGrotesk-Bold', size: 56, bg: 'word', bgColor: '#FFFFFF', bgOpacity: 1, color: '#111111', bgRadius: 6, bgPadX: 10, bgPadY: 4 } },
+  { name: 'emoji-above', W: 720, H: 1280, t: 1.3, caption: cap('Delivery in just two days', { emoji: [0, '🚚'], emph: [0] }),
+    style: { font: 'Poppins-Black', size: 70, emoji: 'above', emphasis: 'marked', emphColor: '#FFE14D', outline: 5, textCase: 'upper', vPos: 'bottom', vOffset: 22 } },
+  { name: 'emoji-pop-mid', W: 1280, H: 720, t: 0.6, caption: cap('Sales are on fire this week', { emoji: [3, '🔥'] }),
+    style: { font: 'Montserrat-ExtraBold', size: 64, emoji: 'above', emojiSize: 1.8, outline: 4 } },
+  { name: 'emoji-below-tilt', W: 720, H: 1280, t: 1.1, caption: cap('Money saved every month', { emoji: [0, '💰'] }),
+    style: { font: 'Bangers-Regular', size: 86, emoji: 'below', tilt: -5, outline: 6, color: '#FFE14D', vPos: 'middle', vOffset: 0, bg: 'block', bgColor: '#000000', bgOpacity: 0.6, bgRadius: 18, bgPadX: 18, bgPadY: 10 } },
+  { name: 'emoji-top', W: 1280, H: 720, t: 1.2, caption: cap('Big news for every seller', { emoji: [1, '📢'] }),
+    style: { font: 'Inter-Bold', size: 58, emoji: 'above', vPos: 'top', vOffset: 8, outline: 3, animIn: 'fade' } },
 ];
 
 // Every library template, on a vertical reel frame, mid-caption.

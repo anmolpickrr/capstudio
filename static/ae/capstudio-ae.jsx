@@ -1,8 +1,8 @@
 /* Capstudio captions for After Effects (ExtendScript, ES3).
  * Run it from File > Scripts > Run Script File. It builds a composition the size,
  * frame rate and length of your video with every caption as editable layers: a
- * text layer per word (plus its shadow and glow), shape layers for backgrounds and
- * pills, all animated with keyframes. Drop the composition over your footage at 0:00.
+ * text layer per word (plus its shadow and glow), shape layers for backgrounds,
+ * pills and emojis, all animated with keyframes. Drop the composition over your footage at 0:00.
  * Install the fonts in the "fonts" folder next to this script first.
  *
  * CapstudioBuild(D, comp) does the building; the Capstudio panel for After Effects
@@ -102,6 +102,27 @@ function CapstudioBuild(D, comp) {
     timing(layer, d);
   }
 
+  // An emoji: one shape group per coloured shape. In a shape layer the first group
+  // is in front, so they're added from the front-most down.
+  function emojiLayer(comp, d) {
+    var layer = comp.layers.addShape(), root = layer.property('ADBE Root Vectors Group'), i, j, g, shapes, s, p, fill;
+    for (i = d.shapes.length - 1; i >= 0; i--) {
+      g = root.addProperty('ADBE Vector Group');
+      shapes = g.property('ADBE Vectors Group');
+      for (j = 0; j < d.shapes[i].paths.length; j++) {
+        p = d.shapes[i].paths[j];
+        s = new Shape();
+        s.vertices = p.v; s.inTangents = p.i; s.outTangents = p.o; s.closed = true;
+        shapes.addProperty('ADBE Vector Shape - Group').property('ADBE Vector Shape').setValue(s);
+      }
+      fill = shapes.addProperty('ADBE Vector Graphic - Fill');
+      fill.property('ADBE Vector Fill Color').setValue(rgb(d.shapes[i].color));
+      if (d.shapes[i].opacity < 100) fill.property('ADBE Vector Fill Opacity').setValue(d.shapes[i].opacity);
+    }
+    transform(layer, d.keys, [0, 0]);
+    timing(layer, d);
+  }
+
   function watermark(comp, w) {
     var file = new File(w.path || File($.fileName).parent.fsName + '/' + w.file), item, layer, tr;
     if (!file.exists) return;
@@ -118,7 +139,9 @@ function CapstudioBuild(D, comp) {
   if (D.watermark) watermark(comp, D.watermark);
   // layers are added on top, so in drawing order the last drawn ends up in front
   for (i = 0; i < D.layers.length; i++) {
-    if (D.layers[i].type === 'box') boxLayer(comp, D.layers[i]); else textLayer(comp, D.layers[i]);
+    if (D.layers[i].type === 'box') boxLayer(comp, D.layers[i]);
+    else if (D.layers[i].type === 'emoji') emojiLayer(comp, D.layers[i]);
+    else textLayer(comp, D.layers[i]);
   }
   for (i in missing) if (missing.hasOwnProperty(i)) names.push(missing[i]);
   return { count: D.layers.length, missing: names };

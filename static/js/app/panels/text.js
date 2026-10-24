@@ -1,4 +1,4 @@
-// Text: typeface, size, case, spacing, colour, and keyword emphasis.
+// Text: typeface, size, case, spacing, colour, keyword emphasis and emojis.
 import { fontById, families } from '../../engine/fonts.js';
 import { fontButton } from '../fontpicker.js';
 import { setStyle, state } from '../store.js';
@@ -25,7 +25,7 @@ function weightSelect(ctrls) {
 
 export const textPanel = stylePanel({
   title: 'Text',
-  shape: () => [state.style.gradientTo ? 'g' : '', state.style.emphasis, state.style.emphBg ? 'b' : ''].join('|'),
+  shape: () => [state.style.gradientTo ? 'g' : '', state.style.emphasis, state.style.emphBg ? 'b' : '', !state.style.emoji || state.style.emoji === 'off' ? 'e' : ''].join('|'),
   build(ctrls) {
     const s = state.style;
     const font = fontButton({ value: () => state.style.font, onPick: (id) => setStyle({ font: id }) });
@@ -67,6 +67,11 @@ export const textPanel = stylePanel({
           toggle(ctrls, { label: 'Marker behind keyword', key: 'emphBg' }),
           s.emphBg ? colorField(ctrls, { label: 'Marker colour', key: 'emphBgColor' }) : null,
         ] : []),
+      ),
+      section('Emojis',
+        segmented(ctrls, { key: 'emoji', options: [['off', 'Off'], ['above', 'Above'], ['below', 'Below']] }),
+        s.emoji && s.emoji !== 'off' ? slider(ctrls, { label: 'Emoji size', key: 'emojiSize', min: 0.8, max: 3, step: 0.05, format: (v) => `${Math.round(v * 100)}%` }) : null,
+        h('p', { class: 'hint' }, 'Add emojis in the Captions panel: all at once with “Add emojis & keywords”, or one caption at a time.'),
       ),
       more('Spacing & punctuation',
         slider(ctrls, { label: 'Letter spacing', key: 'letterSpacing', min: -8, max: 20, step: 0.5 }),

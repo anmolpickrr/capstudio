@@ -77,6 +77,8 @@ export class SvgRenderer {
       const item = { el: e, g };
       if (e.kind === 'box') {
         item.shape = el('path', {}, g);
+      } else if (e.kind === 'emoji') {
+        for (const [fill, d, a] of e.layers) el('path', { d, fill, 'fill-opacity': a ?? null }, g);
       } else {
         item.text = el('text', {
           x: 0, y: (-e.desc).toFixed(2), 'text-anchor': 'middle', 'font-family': cssFamily(e.font),
@@ -119,6 +121,7 @@ export class SvgRenderer {
       set(g, 'filter', `url(#${filter.id})`);
     } else set(g, 'filter', null);
 
+    if (e.kind === 'emoji') return;
     if (e.kind === 'box') {
       set(item.shape, 'd', roundedRect(s.rect.w, s.rect.h, s.radius));
       set(item.shape, 'fill', s.color);

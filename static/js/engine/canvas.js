@@ -1,6 +1,7 @@
 // Export renderer: draws caption scenes onto a canvas, frame by frame, with the
 // same element states the SVG preview uses, so a video exported in the browser
 // looks exactly like the preview.
+import { EMOJI_BOX } from './emoji.js';
 import { cssFamily } from './fonts.js';
 import { elementState } from './scene.js';
 import { bandColors, roundedRect } from './svg.js';
@@ -35,6 +36,7 @@ export class CanvasRenderer {
   area(e, s) {
     let x0, y0, x1, y1;
     if (e.kind === 'box') { x0 = 0; y0 = 0; x1 = s.rect.w; y1 = s.rect.h; }
+    else if (e.kind === 'emoji') { x0 = 0; y0 = 0; x1 = EMOJI_BOX; y1 = EMOJI_BOX; }
     else {
       // glyphs can reach past the measured box (italics, accents, outline): pad generously
       const fs = e.size * e.font.scale, pad = 2 * (s.outline || 0) + fs * 0.35 + Math.abs(e.spacing || 0) * 2, y = -e.desc;
@@ -63,8 +65,9 @@ export class CanvasRenderer {
         const b = this.bounds;
         this.bounds = b ? { x0: Math.min(b.x0, r.x), y0: Math.min(b.y0, r.y), x1: Math.max(b.x1, r.x + r.w), y1: Math.max(b.y1, r.y + r.h) }
           : { x0: r.x, y0: r.y, x1: r.x + r.w, y1: r.y + r.h };
-        const stroke = e.kind === 'text' && s.outline > 0.01;
-        const fill = e.kind === 'box' || !!s.fill;
+        // an emoji's shapes overlap, and fade as one picture
+        const stroke = (e.kind === 'text' && s.outline > 0.01) || e.kind === 'emoji';
+        const fill = e.kind !== 'text' || !!s.fill;
         const blurred = s.blur > 0.05;
         ctx.save();
         if (blurred) { ctx.beginPath(); ctx.rect(r.x, r.y, r.w, r.h); ctx.clip(); }
@@ -106,6 +109,15 @@ export class CanvasRenderer {
     ctx.translate(s.pos.x, s.pos.y);
     if (s.rot) ctx.rotate((s.rot * Math.PI) / 180);
     ctx.scale(s.scale, s.scale);
+    if (e.kind === 'emoji') {
+      let ps = this.paths.get(e.char);
+      if (!ps) { ps = e.layers.map(([c, d, a]) => [c, new Path2D(d), a ?? 1]); this.paths.set(e.char, ps); }
+      this.blurred(ctx, blur, () => {
+        for (const [c, p, a] of ps) { ctx.globalAlpha = alpha * a; ctx.fillStyle = c; ctx.fill(p); }
+      });
+      ctx.restore();
+      return;
+    }
     if (e.kind === 'box') {
       ctx.fillStyle = s.color;
       const key = `${s.rect.w.toFixed(2)},${s.rect.h.toFixed(2)},${s.radius.toFixed(2)}`;

@@ -2,7 +2,8 @@
 // state of each element at any moment. The SVG preview draws these states
 // every frame; the ASS exporter samples the same states over time.
 import { layoutCaption } from './layout.js';
-import { activeScale, groupMotion, wordMotion, wordTiming } from './motion.js';
+import { EMOJI_BOX } from './emoji.js';
+import { activeScale, emojiMotion, groupMotion, wordMotion, wordTiming } from './motion.js';
 
 export const GRADIENT_BANDS = 12;
 
@@ -58,6 +59,10 @@ export function buildScene(caption, styleIn, W, H, spaced = true) {
     if (style.highlight === 'sweep') {
       els.push({ ...text, role: 'sweep', z: 6, offset: { x: 0, y: 0 }, outline, outlineColor: style.outlineColor, alpha: style.opacity ?? 1 });
     }
+  }
+  if (layout.emoji) {
+    const e = layout.emoji;
+    els.push({ kind: 'emoji', z: 8, char: e.char, word: e.word, layers: e.layers, rect: e.rect });
   }
   els.sort((a, b) => a.z - b.z);
   return { caption, style, layout, elements: els, W, H };
@@ -144,6 +149,17 @@ export function elementState(scene, el, t) {
     const pos = gt.map(r.x, r.y);
     return { visible: gt.opacity > 0.001, pos, scale: gt.scale, opacity: gt.opacity * el.alpha,
       rect: { x: 0, y: 0, w: r.w, h: r.h }, radius: Math.min(el.radius, r.h / 2, r.w / 2), color: el.color, rot: style.tilt || 0 };
+  }
+
+  if (el.kind === 'emoji') {
+    const gt = groupTransform(scene, t);
+    const m = emojiMotion(style, caption, t);
+    if (!m.visible) return { visible: false };
+    const E = el.rect.w, k = m.scale;
+    const cx = el.rect.x + E / 2, cy = el.rect.y + E / 2;
+    const opacity = gt.opacity * m.opacity;
+    return { visible: opacity > 0.001, pos: gt.map(cx - (k * E) / 2, cy - (k * E) / 2), scale: (gt.scale * k * E) / EMOJI_BOX,
+      opacity, rot: style.tilt || 0, blur: gt.blur };
   }
 
   const wt = wordTransform(scene, el.word, t);

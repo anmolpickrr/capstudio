@@ -1,0 +1,4 @@
+emoji.json holds emoji graphics from Twemoji (https://github.com/jdecked/twemoji),
+copyright Twitter, Inc and other contributors, licensed under CC-BY 4.0
+(https://creativecommons.org/licenses/by/4.0/). The shapes were converted to plain
+paths by scripts/build_emoji.mjs; their look is unchanged.

@@ -24,6 +24,7 @@ const P = {
   close: '<path d="M6 6l12 12M18 6 6 18"/>',
   chevron: '<path d="m9 6 6 6-6 6"/>',
   down: '<path d="m6 9 6 6 6-6"/>',
+  smile: '<circle cx="12" cy="12" r="9"/><path d="M8.5 14.5a4.5 4.5 0 0 0 7 0"/><path d="M9 9.5h.01M15 9.5h.01"/>',
   star: '<path d="m12 3 2.7 5.6 6.1.9-4.4 4.3 1 6.1L12 17l-5.4 2.9 1-6.1-4.4-4.3 6.1-.9z"/>',
   trash: '<path d="M4 7h16M10 11v6M14 11v6M6 7l1 13h10l1-13M9 7V4h6v3"/>',
   split: '<path d="M12 3v18"/><path d="m7 8-4 4 4 4M17 8l4 4-4 4"/>',

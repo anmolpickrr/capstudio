@@ -70,8 +70,9 @@ export function retext(caption, text, spaced = true) {
     ...caption,
     words: tokens.map((tok) => {
       const d = (end - start) * (tok.length + 1) / total;
-      const keep = old.find((w) => w.text === tok && w.emph);
-      const w = { text: tok, start: t, end: t + d, conf: 1, ...(keep ? { emph: true } : {}) };
+      // a keyword mark and an emoji stay on their word
+      const keep = old.find((w) => w.text === tok && w.emph), pic = old.find((w) => w.text === tok && w.emoji);
+      const w = { text: tok, start: t, end: t + d, conf: 1, ...(keep ? { emph: true } : {}), ...(pic ? { emoji: pic.emoji } : {}) };
       t += d;
       return w;
     }),

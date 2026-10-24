@@ -27,8 +27,9 @@ def fake(audio, duration, code, prompt, vocab, progress):
 
 transcribe._local = fake
 
-# A stand-in for the text model behind "Change script": Devanagari for a few known
-# words, and an English "translation" that's easy to recognise in tests.
+# A stand-in for the text model behind "Change script" (Devanagari for a few known
+# words, and an English "translation" that's easy to recognise in tests) and
+# "Add emojis & keywords".
 from server import script  # noqa: E402
 
 DEVA = {"yeh": "यह", "bahut": "बहुत", "aasan": "आसान", "hai,": "है,", "hai": "है"}
@@ -37,6 +38,16 @@ DEVA = {"yeh": "यह", "bahut": "बहुत", "aasan": "आसान", "hai,
 def fake_chat(system, user):
     import json
     items = json.loads(user)["items"]
+    if "emojis" in system:
+        # keywords: the longest word; emojis for a few known words
+        pics = {"welcome": "👋", "video": "🎬", "video.": "🎬", "videos": "🎬", "colour-perfect": "✨"}
+        out = []
+        for it in items:
+            ws = [w.lower().strip(",.!") for w in it["words"]]
+            hit = next((i for i, w in enumerate(ws) if w in pics), None)
+            out.append({"id": it["id"], "keyword": max(range(len(ws)), key=lambda i: len(ws[i])),
+                        "emoji": pics[ws[hit]] if hit is not None else None, "emojiWord": hit})
+        return {"items": out}
     if "Devanagari" in system:
         return {"items": [{"id": it["id"], "words": [DEVA.get(w.lower(), w) for w in it["words"]]} for it in items]}
     return {"items": [{"id": it["id"], "text": "EN " + it["text"]} for it in items]}
