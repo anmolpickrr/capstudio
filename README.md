@@ -66,6 +66,25 @@ Upload → captions generated automatically → choose a style → customise →
 - **Odia** appears in the list as *not supported yet*, because the Whisper model can't transcribe it.
 - Every word is drawn in a font that can render it: fonts fall back per word. The font picker only lists fonts that support the captions' language.
 
+## Video editor
+
+`/edit` is a multi-track video editor in the browser (`static/js/editor/`), linked from Capstudio's first page ("Open the video editor") and from a captioned video ("Open in Editor", which brings the video, its captions and style along).
+
+- **Projects:** start in 9:16, 1:1, 4:5 or 16:9 (any size, 24–60 fps, in the project settings). Projects and their media files are saved in the browser (IndexedDB) as you work and listed on the start screen. Undo and redo cover every edit.
+- **Media:** import or drop videos, music, voice-overs and images. Pictures go on the main track (V1) at the playhead, or after its last clip; sound at the playhead. The timeline shows frames from each video and the waveform of each sound.
+- **Timeline:** as many video and audio tracks as needed (upper video tracks cover lower ones), each can be hidden or muted and locked. Move clips (across tracks of the same kind; they stop at their neighbours instead of covering them), trim either edge, cut with the razor (C) or at the playhead (S), delete (Del), delete and close the gap (Shift+Del, or the ripple switch), close a gap by double-clicking it, duplicate, copy and paste. Snapping to the playhead and clip edges, zoom (Ctrl+wheel) and frame stepping.
+- **Layers:** position, scale, rotation and opacity, set with the inspector or by dragging the picture, its corners and its rotation handle in the viewer (snapping to the centre lines). Fit, fill or original size, and blend modes (multiply, screen, overlay…).
+- **Keyframes:** every one of those, and volume, can be animated: the ◇ next to a setting adds a keyframe at the playhead; changing the value elsewhere adds another. Easing per keyframe (linear, ease in, out, in and out, hold); keyframes show on the selected clip in the timeline.
+- **Transitions:** cross dissolve, dip to black or white, slide, push, wipe (four directions each), zoom and blur. Between two clips on a track the transition is centred on the cut (the source's extra frames are used, or the edge frame is held); on a clip with nothing before or after it, it's an entrance or exit.
+- **Colour:** looks (vivid, warm, cool, film, moody, black & white, noir, vintage, teal & orange…) plus exposure, contrast, saturation, temperature, tint, hue, fade, vignette and blur.
+- **Text and shapes:** title, subtitle, lower third, tag, quote, typewriter, outlined and caption-box presets with every font in the library, colour, outline, shadow, background box and entrance/exit animations; rectangles, circles, bars and colour fills.
+- **Sound:** per-clip volume (keyframable, in dB), fade in and out, mute, speed (0.1–8×; pitch follows, as in the export), separating a video's sound onto its own clip, track mute.
+- **Captions:** "Caption this edit" mixes the edit's sound, sends it to the same speech engine as Capstudio (inside a tiny blank video, since the service takes video files) and adds a captions clip, styled with any Capstudio template; or add a Capstudio project's video and captions.
+- **Export:** an MP4 (H.264 + AAC) made in the browser with WebCodecs, nothing uploaded: each video clip's frames are decoded exactly, each frame is drawn by the same compositor as the preview (`render.js`), and the sound is mixed in an OfflineAudioContext with every volume, fade, keyframe and speed. Full or half size; high, best or small file. Needs Chrome or Edge on a computer.
+- **How it's built:** `model.js` (the project and every edit, no DOM), `store.js` (state, history, autosave), `media.js` (import, thumbnails, waveforms), `render.js` (the compositor), `player.js` (real-time preview: one media element per clip near the playhead, kept in step and routed through gains), `timeline.js`, `viewer.js`, `inspector.js`, `library.js`, `actions.js`, `captions.js`, `export.js`, `main.js`.
+- **Tests:** `node tests/editor_model.mjs` checks the edits (placement, trims, splits, ripple, speed, keyframes, transitions, audio gain); the browser test edits with the mouse and keyboard, plays back, exports and compares exported frames with the preview, checks the sound's fades, and takes a captioned video from Capstudio into the editor and captions an edit.
+- **Limits:** a computer screen is needed (the side panels hide below 900 px); speed changes shift pitch; very long or many 4K clips are limited by the browser's memory.
+
 ## Premiere Pro and After Effects panel
 
 `panel/` is one panel for Premiere Pro and After Effects 2022 and newer (CEP 11+, Windows and Mac). It shows the Capstudio app from the live site inside the app, so every feature works there, and adds the link to the timeline or composition. It sees which app it's open in and works the right way for each.

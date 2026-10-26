@@ -16,6 +16,7 @@ jobs:
       - run: sudo apt-get update && sudo apt-get install -y ffmpeg
       - run: pip install -r requirements.txt pytest
       - run: pytest -q tests
+      - run: node tests/editor_model.mjs
 
   # After the tests pass on main, ask Render to deploy this commit. Needs the
   # RENDER_DEPLOY_HOOK secret (Render → service → Settings → Deploy Hook).

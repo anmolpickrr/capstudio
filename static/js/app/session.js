@@ -186,6 +186,16 @@ subscribe((what) => {
   }, 800);
 });
 
+// Save now (before leaving for the editor). True when the project and its video are stored.
+export async function saveSessionNow() {
+  const p = state.project;
+  if (!p?.saveId || !p.info || !state.captions.length) return false;
+  clearTimeout(saveTimer);
+  const ok = await saveProject(snapshot());
+  if (ok) { p.saved = true; emit('saved'); }
+  return ok && p.fileSaved !== false;
+}
+
 // Pick a saved project up again. The video comes from this browser's storage (or,
 // if it couldn't be stored, from the file the editor picks again).
 export async function resumeProject(id, pickFile) {

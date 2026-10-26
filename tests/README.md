@@ -19,6 +19,7 @@ node e2e.mjs                             # upload → captions → style → exp
 node parity.mjs                          # preview vs export, pixel comparison
 node panel_host.mjs                      # the panel's ExtendScript, against stand-in Premiere and After Effects
 node ae_script.mjs                       # the After Effects script, against a stand-in After Effects
+node editor_model.mjs                    # the video editor's edits (no browser needed)
 ```
 
 - **`e2e.mjs`** exports five kinds of source video:

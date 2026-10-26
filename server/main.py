@@ -653,12 +653,23 @@ def _app_version() -> str:
 APP_VERSION = _app_version()
 
 
+def _versioned_page(name: str) -> HTMLResponse:
+    html = (STATIC / name).read_text()
+    html = re.sub(r'(href|src)="(css|js)/', rf'\1="/v/{APP_VERSION}/\2/', html)
+    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+
+
 @app.get("/")
 @app.get("/index.html")
 def index_page():
-    html = (STATIC / "index.html").read_text()
-    html = re.sub(r'(href|src)="(css|js)/', rf'\1="/v/{APP_VERSION}/\2/', html)
-    return HTMLResponse(html, headers={"Cache-Control": "no-cache"})
+    return _versioned_page("index.html")
+
+
+@app.get("/edit")
+@app.get("/edit.html")
+def editor_page():
+    """The video editor (static/js/editor/)."""
+    return _versioned_page("edit.html")
 
 
 @app.get("/v/{version}/{path:path}")

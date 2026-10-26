@@ -328,6 +328,170 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// The video editor (/edit): media placed on the main track, music, a title and a
+// shape; dragging, trimming, the razor, split, delete and undo with the mouse and
+// keys; a look, keyframes, a blend mode and transitions; real-time playback; and
+// an export whose frames match the preview's and whose sound follows the fades.
+{
+  const page = await browser.newPage({ viewport: { width: 1600, height: 960 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const music = join(OUT, 'music.wav');
+  // a steady tone (ffmpeg's sine is at 1/8 volume: about 0.044 RMS after this)
+  execFileSync('ffmpeg', ['-v', 'error', '-y', '-f', 'lavfi', '-i', 'sine=frequency=440:duration=12', '-af', 'volume=0.5', music]);
+  const clips = () => page.evaluate(() => window.__editor.ed.project.clips.map((c) => ({ type: c.type, start: +c.start.toFixed(3), dur: +c.dur.toFixed(3), in: +c.in.toFixed(3),
+    track: window.__editor.ed.project.tracks.find((t) => t.id === c.track).name })));
+  try {
+    await page.addInitScript(() => { window.__exportCodecs = ['vp9']; window.__exportAudioCodecs = ['opus']; });
+    await page.goto(`${BASE}/edit`);
+    await page.click('.es-preset >> nth=0');
+    await page.setInputFiles('.ed-lib input[type=file]', [MEDIA + 'vert_vp9.mp4', MEDIA + 'land_vp9.mp4', music]);
+    await page.waitForFunction(() => document.querySelectorAll('.lib-card').length === 3, null, { timeout: 30000 });
+    for (const name of ['vert_vp9.mp4', 'land_vp9.mp4', 'music.wav']) await page.locator(`.lib-card[title^="${name}"] .lib-add`).click({ force: true });
+    const diffs = [];
+    let cs = await clips();
+    if (cs[0].track !== 'V1' || cs[1].track !== 'V1' || cs[1].start !== 8 || cs[2].track !== 'A1') diffs.push(`placement ${JSON.stringify(cs)}`);
+    // mouse: drag the music 1 s right, trim 1 s off the second video's start, razor the first at 3 s
+    const mb = await page.locator('.et-clip.t-audio').boundingBox();
+    await page.mouse.move(mb.x + 100, mb.y + 20); await page.mouse.down(); await page.mouse.move(mb.x + 180, mb.y + 20, { steps: 8 }); await page.mouse.up();
+    const vb = await page.locator('.et-clip.t-video').nth(1).boundingBox();
+    await page.mouse.move(vb.x + 2, vb.y + 20); await page.mouse.down(); await page.mouse.move(vb.x + 82, vb.y + 20, { steps: 8 }); await page.mouse.up();
+    await page.keyboard.press('c');
+    const fb = await page.locator('.et-clip.t-video').first().boundingBox();
+    await page.mouse.click(fb.x + 240, fb.y + 20);
+    await page.keyboard.press('v');
+    cs = await clips();
+    const vids = cs.filter((c) => c.type === 'video').sort((a, b) => a.start - b.start);
+    if (cs.find((c) => c.type === 'audio').start !== 1) diffs.push('music not dragged to 0:01');
+    if (vids.length !== 3 || vids[0].dur !== 3 || vids[1].start !== 3 || vids[1].in !== 3 || vids[2].start !== 9 || vids[2].in !== 1) diffs.push(`trim/razor ${JSON.stringify(vids)}`);
+    // keys: split the music at 5 s, delete the right part, undo
+    await page.evaluate(() => { const { ed, select, setPlayhead } = window.__editor; select([ed.project.clips.find((c) => c.type === 'audio').id]); setPlayhead(5); });
+    await page.keyboard.press('s');
+    await page.keyboard.press('Delete');
+    const afterDelete = (await clips()).filter((c) => c.type === 'audio').length;
+    await page.keyboard.press('Control+z');
+    if (afterDelete !== 1 || (await clips()).filter((c) => c.type === 'audio').length !== 2) diffs.push('split/delete/undo');
+    // a title (lower third) and a circle from the library, then looks, keyframes, a blend and transitions
+    await page.click('.lib-tabs [data-tab=text]');
+    await page.evaluate(() => window.__editor.setPlayhead(0.5));
+    await page.click('.lib-tile.text >> nth=2');
+    await page.click('.lib-tabs [data-tab=shapes]');
+    await page.evaluate(() => window.__editor.setPlayhead(6));
+    await page.click('.lib-tile >> nth=2');
+    await page.evaluate(() => {
+      const { ed, edit } = window.__editor;
+      const vids = ed.project.clips.filter((c) => c.type === 'video').sort((a, b) => a.start - b.start);
+      const text = ed.project.clips.find((c) => c.type === 'text'), circle = ed.project.clips.find((c) => c.type === 'shape');
+      const music = ed.project.clips.filter((c) => c.type === 'audio').sort((a, b) => a.start - b.start);
+      edit((p) => {
+        const f = (id) => p.clips.find((c) => c.id === id);
+        f(vids[0].id).look = 'film';
+        f(vids[1].id).keys.scale = [{ t: 0, v: 1, ease: 'linear' }, { t: 5, v: 1.3, ease: 'linear' }];
+        f(vids[1].id).transIn = { type: 'push-left', dur: 0.6 };
+        f(vids[2].id).transIn = { type: 'dissolve', dur: 1 };
+        f(text.id).keys.rotation = [{ t: 0, v: -10, ease: 'inout' }, { t: 3, v: 10, ease: 'inout' }];
+        f(circle.id).keys.x = [{ t: 0, v: -300, ease: 'linear' }, { t: 5, v: 300, ease: 'linear' }];
+        f(circle.id).blend = 'screen';
+        f(circle.id).transOut = { type: 'zoom', dur: 0.6 };
+        Object.assign(f(music[0].id).audio, { fadeIn: 1 });
+        Object.assign(f(music[1].id).audio, { fadeOut: 2 });
+      });
+    });
+    // playback runs in real time
+    await page.evaluate(() => window.__editor.setPlayhead(2));
+    await page.keyboard.press(' ');
+    await page.waitForTimeout(1500);
+    await page.keyboard.press(' ');
+    const played = await page.evaluate(() => window.__editor.ed.playhead) - 2;
+    if (played < 1.2 || played > 1.8) diffs.push(`played ${played.toFixed(2)} s in 1.5 s`);
+    // export, then compare its frames with the preview's
+    await page.click('.ed-top .btn.brand');
+    await page.click('#ed-dialog .btn.brand.lg');
+    await page.waitForSelector('#ed-export-status .result.ok a', { timeout: 300000 });
+    await page.keyboard.press('Escape');
+    const times = [1.0, 3.1, 4.4, 6.5, 9.0, 11.2];
+    const res = await page.evaluate(async (times) => {
+      const { player, setPlayhead } = window.__editor;
+      const blob = await (await fetch(document.querySelector('#ed-export-status .result.ok a').href)).blob();
+      const mbx = await import('/vendor/mediabunny-1.61.0.min.js');
+      const input = new mbx.Input({ source: new mbx.BlobSource(blob), formats: mbx.ALL_FORMATS });
+      const vt = await input.getPrimaryVideoTrack(), at = await input.getPrimaryAudioTrack();
+      const sink = new mbx.CanvasSink(vt, { poolSize: 0 });
+      const out = { psnr: [], dur: await input.computeDuration(), w: vt.displayWidth, h: vt.displayHeight, audio: !!at, rms: [] };
+      for (const t of times) {
+        const exp = (await sink.getCanvas(t + 0.001)).canvas.getContext('2d').getImageData(0, 0, 1080, 1920).data;
+        setPlayhead(t);
+        for (let i = 0; i < 100; i++) {
+          await new Promise((ok) => setTimeout(ok, 50));
+          if ([...player.els.values()].every((e) => e.el.readyState >= 2 && !e.el.seeking)) break;
+        }
+        player.invalidate();
+        await new Promise((ok) => requestAnimationFrame(() => requestAnimationFrame(ok)));
+        const pre = player.canvas.getContext('2d').getImageData(0, 0, 1080, 1920).data;
+        let se = 0;
+        for (let i = 0; i < pre.length; i += 4) for (let c = 0; c < 3; c++) { const d = pre[i + c] - exp[i + c]; se += d * d; }
+        const mse = se / (1080 * 1920 * 3);
+        out.psnr.push(+(mse ? 10 * Math.log10(255 * 255 / mse) : 99).toFixed(1));
+      }
+      // loudness in the fade-in, the middle and the fade-out of the music
+      const as = new mbx.AudioBufferSink(at);
+      for (const [a, b] of [[1.05, 1.25], [3, 3.2], [12.6, 12.8]]) {
+        let s = 0, n = 0;
+        for await (const w of as.buffers(a, b)) { const d = w.buffer.getChannelData(0); for (const v of d) { s += v * v; n++; } }
+        out.rms.push(+Math.sqrt(s / Math.max(1, n)).toFixed(4));
+      }
+      return out;
+    }, times);
+    if (res.w !== 1080 || res.h !== 1920 || Math.abs(res.dur - 20) > 0.2 || !res.audio) diffs.push(`export ${res.w}x${res.h} ${res.dur}s audio ${res.audio}`);
+    // the same picture scores 30+ dB after compression; a missing or misplaced layer scores well under 20
+    if (res.psnr.some((x) => x < 26)) diffs.push(`preview vs export ${res.psnr.join(', ')} dB`);
+    if (!(res.rms[0] < res.rms[1] * 0.4 && res.rms[2] < res.rms[1] * 0.6 && res.rms[1] > 0.03)) diffs.push(`sound ${res.rms.join(', ')}`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log(`✓ editor: placement, drag, trim, razor, split/delete/undo, real-time playback, looks, keyframes, blend, transitions; export matches the preview (${Math.min(...res.psnr)} dB lowest) with faded sound`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-editor.png') }).catch(() => {});
+    fail('editor', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// From Capstudio to the editor: a captioned video opens there with its captions,
+// and the editor can caption its own edit.
+{
+  const page = await browser.newPage({ viewport: { width: 1600, height: 960 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.addInitScript(() => { window.__exportCodecs = ['vp9']; });
+    await page.goto(BASE);
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForSelector('#to-editor:not([disabled])', { timeout: 120000 });
+    const n = await page.evaluate(async () => (await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'))).state.captions.length);
+    await page.click('#to-editor');
+    await page.waitForURL(/\/edit\?project=/, { timeout: 20000 });
+    await page.waitForFunction(() => window.__editor?.ed.project.clips.length >= 2, null, { timeout: 30000 });
+    const st = await page.evaluate(() => { const p = window.__editor.ed.project; return { W: p.W, H: p.H, types: p.clips.map((c) => c.type), caps: p.clips.find((c) => c.type === 'captions')?.captions.length }; });
+    const diffs = [];
+    if (st.W !== 1080 || st.H !== 1920 || !st.types.includes('video') || st.caps !== n) diffs.push(`handoff ${JSON.stringify(st)} (expected ${n} captions)`);
+    await page.evaluate(() => { const { edit } = window.__editor; edit((p) => { p.clips = p.clips.filter((c) => c.type !== 'captions'); }); });
+    await page.click('.lib-tabs [data-tab=captions]');
+    await page.click('button:has-text("Caption this edit")');
+    await page.waitForFunction(() => window.__editor.ed.project.clips.some((c) => c.type === 'captions'), null, { timeout: 120000 });
+    const auto = await page.evaluate(() => window.__editor.ed.project.clips.find((c) => c.type === 'captions').captions);
+    if (!auto.length || !/Hey/.test(auto[0].words.map((w) => w.text).join(' '))) diffs.push('auto captions missing');
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log(`✓ Capstudio → editor: video and ${n} captions carried over; the edit captioned in the editor (${auto.length} captions)`);
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-editor-handoff.png') }).catch(() => {});
+    fail('Capstudio → editor', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // The Premiere Pro panel, end to end: the real panel bridge and host script with
 // Premiere replaced by a stand-in (tests/panel/). A clip used from 0:03 of its
 // file sits at 0:02–0:08 on V1 of a 1080×1920, 25 fps sequence; V2 is busy there.

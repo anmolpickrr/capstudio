@@ -5,7 +5,7 @@ import { openExport } from './export.js';
 import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
-import { captionSelectedClip, engine, leaveProject, resumeProject, startUpload, syncEngine } from './session.js';
+import { captionSelectedClip, engine, leaveProject, resumeProject, saveSessionNow, startUpload, syncEngine } from './session.js';
 import { inAE, inPremiere } from './premiere.js';
 import { listProjects } from './saved.js';
 import { enqueue, liveProgress, nextReady, remove as removeQueued, retry } from './queue.js';
@@ -65,6 +65,16 @@ const SCRIPTS = [
   ['हिन्दी', 'deva'], ['English', 'latin'], ['தமிழ்', 'taml'], ['తెలుగు', 'telu'], ['বাংলা', 'beng'], ['मराठी', 'deva'],
   ['ગુજરાતી', 'gujr'], ['ಕನ್ನಡ', 'knda'], ['മലയാളം', 'mlym'], ['ਪੰਜਾਬੀ', 'guru'], ['Hinglish', 'latin'], ['اردو', 'arab'],
 ];
+
+// Take the captioned video, its captions and style into the editor.
+async function openInEditor() {
+  const p = state.project;
+  if (!p?.saveId || !state.captions.length) return toast('Caption the video first, then open it in the editor.');
+  const btn = $('#to-editor');
+  btn.disabled = true;
+  if (await saveSessionNow()) location.href = `/edit?capstudio=${encodeURIComponent(p.saveId)}`;
+  else { btn.disabled = false; toast('This browser couldn’t store the video for the editor (storage full?). Open the editor and import the video there.', 'error', 8000); }
+}
 
 // How to install the Premiere Pro and After Effects panel (panel/ in the repository).
 function openPanelHelp() {
@@ -193,7 +203,9 @@ function welcome() {
             h('span', {}, 'Captions that ', h('span', { class: 't-pop' }, 'POP'), ','),
             h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
           h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
-          upload, h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro or After Effects? Get the Capstudio panel'), recentList()),
+          upload,
+          h('a', { class: 'linkish panel-link', href: '/edit' }, 'Need cuts, layers, music and transitions? Open the video editor'),
+          h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro or After Effects? Get the Capstudio panel'), recentList()),
         h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
       ticker,
       h('section', { class: 'looks' },
@@ -365,6 +377,8 @@ function editor() {
       h('button', { class: 'btn', id: 'next-video', hidden: true, html: '<span>Next video ›</span>',
         onclick: (e) => e.currentTarget.dataset.id && resumeProject(e.currentTarget.dataset.id, pickAgain) }),
       h('button', { class: 'btn', id: 'new-video', html: `<span>${inAE ? 'Another layer' : inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
+      inPremiere ? null : h('button', { class: 'btn', id: 'to-editor', 'data-tip': 'Cut, layer, add music and transitions in the video editor', 'data-tip-pos': 'below',
+        html: `${icon('editor')}<span>Open in Editor</span>`, onclick: openInEditor }),
       h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
 
   const panel = h('aside', { class: 'panel', id: 'panel', role: 'tabpanel' });
@@ -399,6 +413,8 @@ function refreshEditor(what) {
   $('#undo').disabled = !canUndo();
   $('#redo').disabled = !canRedo();
   $('#export-btn').disabled = !(state.phase === 'editing' && state.captions.length && (p.job || p.file));
+  const toEd = $('#to-editor');
+  if (toEd) toEd.disabled = !(state.phase === 'editing' && state.captions.length && p.file);
   document.querySelectorAll('.rail button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tool === state.tool)));
   renderFlow();
   if (state.tool !== lastTool || what === 'project' || what === 'tool' || !$('#panel').firstChild) {

@@ -218,3 +218,11 @@ def test_server_export_in_another_format(client, video, mode):
     probe = subprocess.run(["ffprobe", "-v", "error", "-select_streams", "v:0", "-show_entries", "stream=width,height",
                             "-of", "csv=p=0", str(out)], capture_output=True, text=True).stdout.strip()
     assert probe == "360,640"
+
+
+def test_editor_page(client):
+    r = client.get("/edit")
+    assert r.status_code == 200 and "Capstudio Editor" in r.text
+    # its scripts and styles come from this release's versioned address
+    assert '/v/' in r.text and 'src="js/' not in r.text and 'href="css/' not in r.text
+    assert client.get("/edit.html").status_code == 200
