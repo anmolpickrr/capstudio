@@ -1,0 +1,139 @@
+/* Capstudio inside Premiere Pro and After Effects (html.in-panel).
+   Panels are narrow and tall, so instead of one long page the app becomes a
+   fixed-height tool: a compact bar with the main action, a resizable preview, a
+   tab bar that's always on screen, and the settings of one tool, which is the
+   only part that scrolls. Wide panels put the preview and the tools side by side. */
+
+/* the style search, categories and fine-tune links stay put while styles scroll (everywhere) */
+.tpl-bar { position: sticky; top: -4px; z-index: 2; display: grid; gap: 8px; padding: 6px 16px 10px; margin: -6px -16px 0; background: #0e0e0f; box-shadow: 0 10px 12px -10px rgba(0, 0, 0, .9); border-bottom: 1px solid var(--line); }
+.tpl-tune { display: flex; align-items: center; gap: 6px; overflow-x: auto; scrollbar-width: none; }
+.tpl-tune::-webkit-scrollbar { display: none; }
+.tpl-tune > span { font-size: 11.5px; color: var(--text-3); flex: none; }
+.tpl-tune .chip { height: 24px; padding: 0 9px; font-size: 11.5px; }
+
+html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
+.in-panel .header { display: none; }
+.in-panel .app { grid-template-rows: minmax(0, 1fr); height: 100vh; height: 100dvh; }
+.in-panel .studio { height: 100%; }
+
+/* ------------------------------------------------------------ narrow (the usual docked panel) */
+.in-panel .editor {
+  --gap: 0px;
+  grid-template-columns: minmax(0, 1fr);
+  grid-template-rows: 46px var(--pv-h, 40vh) 10px auto auto minmax(0, 1fr);
+  grid-template-areas: "bar" "stage" "grip" "tl" "rail" "panel";
+  height: 100%; gap: 0; padding: 0;
+}
+.in-panel .editor > .projectbar { grid-area: bar; }
+.in-panel .editor > .stage-wrap { grid-area: stage; }
+.in-panel .editor > .pv-resize { grid-area: grip; }
+.in-panel .editor > .timeline { grid-area: tl; display: none; }
+.in-panel .editor.show-tl > .timeline { display: grid; }
+.in-panel .editor > .rail { grid-area: rail; }
+.in-panel .editor > .panel { grid-area: panel; }
+
+.in-panel .projectbar { grid-column: auto; flex-wrap: nowrap; gap: 6px; padding: 0 6px 0 8px; border: 0; border-bottom: 1px solid var(--line); border-radius: 0; background: var(--bg-1); }
+.in-panel .file-chip { flex: 1; min-width: 0; gap: 8px; }
+.in-panel .file-chip .thumb { width: 26px; height: 26px; }
+.in-panel .file-chip b { font-size: 12.5px; max-width: 100%; }
+.in-panel .file-chip small { display: none; }
+.in-panel .flow { display: none; }
+.in-panel .bar-actions { gap: 2px; flex: none; }
+.in-panel .bar-actions .btn { height: 30px; min-height: 0; }
+.in-panel .bar-actions .btn.icon-only { width: 30px; padding: 0; }
+.in-panel .bar-actions .btn.primary { padding: 0 12px; gap: 6px; font-size: 12.5px; }
+.in-panel .bar-actions .btn.primary .icon { width: 15px; height: 15px; }
+
+.in-panel .stage-wrap { grid-column: auto; grid-row: auto; border: 0; border-radius: 0; min-height: 0; }
+.in-panel .stage { height: auto; margin: 4px 8px 4px; }
+.in-panel .frame { border-radius: 8px; }
+.in-panel .zone-bar { flex-wrap: nowrap; gap: 6px; padding: 6px 8px 0; }
+.in-panel .zone-title, .in-panel .zone-source { display: none; }
+.in-panel .zone-chips { flex: 1; min-width: 0; padding: 2px; }
+.in-panel .zone-chip { height: 22px; padding: 0 9px; font-size: 11px; }
+.in-panel .zone-status { font-size: 11px; margin-left: 0; flex: none; }
+.in-panel .transport { width: calc(100% - 12px); margin: 0 auto 6px; padding: 3px 6px; gap: 2px; }
+.in-panel .transport .play { width: 30px; height: 30px; box-shadow: none; }
+.in-panel .transport .time { min-width: 0; font-size: 11px; }
+.in-panel .stage-tools .btn { height: 26px; min-height: 0; }
+
+.pv-resize { display: none; }
+.in-panel .pv-resize { display: grid; place-items: center; cursor: row-resize; background: var(--bg-0); touch-action: none; }
+.in-panel .pv-resize i { width: 36px; height: 4px; border-radius: 4px; background: var(--line-2); transition: background .15s, width .15s; }
+.in-panel .pv-resize:hover i { background: var(--accent-hover); width: 56px; }
+
+.in-panel .timeline { grid-column: auto; grid-row: auto; border-radius: 0; border-left: 0; border-right: 0; }
+
+/* the tool tabs: one row, always visible, every tab in reach */
+.in-panel .rail { grid-row: auto; position: static; flex-direction: row; gap: 0; padding: 0 4px; border: 0; border-top: 1px solid var(--line); border-bottom: 1px solid var(--line);
+  border-radius: 0; background: var(--bg-1); box-shadow: none; overflow-x: auto; scrollbar-width: none; }
+.in-panel .rail::-webkit-scrollbar { display: none; }
+.in-panel .rail .rail-sep { display: none; }
+.in-panel .rail button, .in-panel .rail-toggle { flex: 1 0 44px; min-width: 44px; display: grid; justify-items: center; gap: 2px; padding: 6px 2px 5px; border: 0; border-radius: 0;
+  background: none; color: var(--text-3); font: 600 10px var(--font); position: relative; cursor: pointer; transition: color .12s; }
+.in-panel .rail button svg, .in-panel .rail-toggle svg { width: 18px; height: 18px; padding: 0; border: 0; background: none; border-radius: 0; box-shadow: none; }
+.in-panel .rail button:hover { color: var(--text); }
+.in-panel .rail button[aria-selected="true"] { color: var(--text); }
+.in-panel .rail button[aria-selected="true"] svg { background: none; color: var(--accent-hover); box-shadow: none; }
+.in-panel .rail button[aria-selected="true"]::after { content: ''; position: absolute; left: 20%; right: 20%; bottom: -1px; height: 2px; border-radius: 2px; background: var(--accent-hover); }
+.in-panel .rail-toggle { flex: 0 0 48px; border-left: 1px solid var(--line); }
+.in-panel .rail-toggle[aria-pressed="true"] { color: var(--accent-hover); }
+.rail-toggle { display: none; }
+.in-panel .rail-toggle { display: grid; }
+
+/* one tool's settings: the only thing that scrolls */
+.in-panel .panel { grid-row: auto; border: 0; border-radius: 0; box-shadow: none; background: var(--bg-1); overflow: hidden; min-height: 0; }
+.in-panel .panel-head { padding: 8px 12px 4px; min-height: 0; }
+.in-panel .panel-head h2 { font-size: 13.5px; }
+.in-panel .panel-head .hint { font-size: 11px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.in-panel .panel-body { overflow-y: auto; overscroll-behavior: contain; padding: 4px 12px 16px; gap: 10px; }
+.in-panel .chips { margin: 0; padding-inline: 0; }
+.in-panel .tpl-bar { background: var(--bg-1); padding-inline: 12px; margin-inline: -12px; }
+.in-panel .tpl-grid { grid-template-columns: repeat(auto-fill, minmax(112px, 1fr)); gap: 8px; }
+.in-panel .tpl .meta { padding: 5px 7px 6px; }
+.in-panel .tpl .meta b { font-size: 11.5px; }
+.in-panel .tpl .meta small, .in-panel .tpl-badge { display: none; }
+.in-panel .tpl .meta b { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; display: block; }
+.in-panel .tpl-group h4 { margin: 2px 0 0; }
+
+/* sections fold from their title (remembered) */
+.in-panel .section { gap: 10px; padding-top: 10px; }
+.in-panel .section > h3 { cursor: pointer; user-select: none; }
+.in-panel .section > h3::after { content: ''; width: 7px; height: 7px; border-right: 1.5px solid currentColor; border-bottom: 1.5px solid currentColor; transform: rotate(45deg); margin: -3px 2px 0 8px; transition: transform .15s; }
+.in-panel .section.folded > h3::after { transform: rotate(-45deg); margin-top: 0; }
+.in-panel .section > h3:hover, .in-panel .section > h3:focus-visible { color: var(--text-2); outline: none; }
+.in-panel .section.folded > :not(h3) { display: none !important; }
+.in-panel .section.folded { gap: 0; }
+
+/* property rows: label and slider on one line, like a properties panel */
+.in-panel label.field:has(> .range) { grid-template-columns: minmax(92px, 40%) minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 0; }
+.in-panel label.field:has(> .range) > .label { font-size: 11.5px; font-weight: 500; }
+.in-panel label.field:has(> .range) > .label .value { font: 500 11px var(--mono); color: var(--text-3); }
+.in-panel .field { gap: 5px; }
+.in-panel .field > .label { font-size: 11.5px; }
+.in-panel .seg button { height: 26px; font-size: 11.5px; }
+.in-panel .switch { font-size: 12.5px; }
+.in-panel details.more { padding-top: 10px; }
+.in-panel .grid2 { gap: 8px; }
+
+/* small notices at the top, clear of the controls */
+.in-panel .toasts { top: 52px; bottom: auto; width: calc(100% - 16px); }
+.in-panel .toast { padding: 7px 12px; font-size: 12px; border-radius: 10px; max-width: 100%; }
+
+/* ------------------------------------------------------------ wide panels: preview | tools */
+@media (min-width: 720px) {
+  .in-panel .editor {
+    grid-template-columns: minmax(0, 1fr) minmax(300px, 42%);
+    grid-template-rows: 46px auto minmax(0, 1fr) auto;
+    grid-template-areas: "bar bar" "stage rail" "stage panel" "tl panel";
+  }
+  .in-panel .editor > .pv-resize { display: none; }
+  .in-panel .editor > .rail, .in-panel .editor > .panel { border-left: 1px solid var(--line); }
+  .in-panel .editor > .stage-wrap { min-height: 0; }
+}
+
+/* very small panels: room for the picture first */
+@media (max-width: 420px) {
+  .in-panel .transport select { display: none; }
+  .in-panel .zone-status { display: none; }
+}

@@ -19,6 +19,12 @@ import { $, h, toast } from './ui.js';
 
 let view = null;
 let stage = null, timeline = null;
+
+// Inside the Premiere Pro or After Effects panel the app gets its own compact
+// layout (css/panel.css): only the settings scroll; preview and tabs stay put.
+if (inPremiere) document.documentElement.classList.add('in-panel', inAE ? 'in-ae' : 'in-ppro');
+const remember = (key, fallback) => { try { return JSON.parse(localStorage.getItem(key)) ?? fallback; } catch { return fallback; } };
+const keep = (key, value) => { try { localStorage.setItem(key, JSON.stringify(value)); } catch { /* private window */ } };
 let unsub = null;
 let mounted = null; // 'welcome' | 'editor'
 
@@ -360,10 +366,13 @@ const TOOLS = [
   ['captions', 'Captions', 'captions'],
 ];
 
+const TOOL_IDS = TOOLS.filter(Boolean).map((t) => t[0]);
+
 function editor() {
-  const rail = h('nav', { class: 'rail', role: 'tablist', 'aria-label': 'Tools', 'aria-orientation': 'vertical' },
+  const rail = h('nav', { class: 'rail', role: 'tablist', 'aria-label': 'Tools', 'aria-orientation': inPremiere ? 'horizontal' : 'vertical' },
     TOOLS.map((t) => (t ? h('button', {
-      role: 'tab', 'data-tool': t[0], html: `${icon(t[2])}<span>${t[1]}</span>`,
+      // (a narrow panel calls Watermark "Logo", so every tab fits)
+      role: 'tab', 'data-tool': t[0], html: `${icon(t[2])}<span>${inPremiere && t[0] === 'watermark' ? 'Logo' : t[1]}</span>`, title: `${t[1]} (${TOOL_IDS.indexOf(t[0]) + 1})`,
       onclick: () => set({ tool: t[0] }, 'tool'),
     }) : h('div', { class: 'rail-sep' }))));
 
@@ -376,15 +385,19 @@ function editor() {
       h('button', { class: 'btn ghost icon-only', id: 'redo', 'data-tip': 'Redo (Ctrl+Shift+Z)', 'data-tip-pos': 'below', html: icon('redo'), onclick: () => redo() }),
       h('button', { class: 'btn', id: 'next-video', hidden: true, html: '<span>Next video ›</span>',
         onclick: (e) => e.currentTarget.dataset.id && resumeProject(e.currentTarget.dataset.id, pickAgain) }),
-      h('button', { class: 'btn', id: 'new-video', html: `<span>${inAE ? 'Another layer' : inPremiere ? 'Another clip' : 'New video'}</span>`, onclick: newVideo }),
+      inPremiere
+        ? h('button', { class: 'btn ghost icon-only', id: 'new-video', 'data-tip': inAE ? 'Caption another layer' : 'Caption another clip', 'data-tip-pos': 'below',
+          'aria-label': inAE ? 'Caption another layer' : 'Caption another clip', html: icon('replay'), onclick: newVideo })
+        : h('button', { class: 'btn', id: 'new-video', html: '<span>New video</span>', onclick: newVideo }),
       inPremiere ? null : h('button', { class: 'btn', id: 'to-editor', 'data-tip': 'Cut, layer, add music and transitions in the video editor', 'data-tip-pos': 'below',
         html: `${icon('editor')}<span>Open in Editor</span>`, onclick: openInEditor }),
-      h('button', { class: 'btn primary', id: 'export-btn', html: '<span>Export</span>', onclick: openExport })));
+      h('button', { class: 'btn primary', id: 'export-btn', html: inPremiere ? `${icon('export')}<span>${inAE ? 'Add to comp' : 'Add to timeline'}</span>` : '<span>Export</span>', onclick: openExport })));
 
   const panel = h('aside', { class: 'panel', id: 'panel', role: 'tabpanel' });
   const stageWrap = h('section', { class: 'stage-wrap', 'aria-label': 'Preview' });
   const tl = h('section', { class: 'timeline', 'aria-label': 'Timeline' });
   const root = h('div', { class: 'editor' }, bar, rail, panel, stageWrap, tl);
+  if (inPremiere) panelChrome(root, rail, panel);
   stage = new Stage(stageWrap);
   timeline = new Timeline(tl, stage);
   stage.onTime = (t) => timeline.setTime(t);
@@ -399,6 +412,73 @@ async function newVideo() {
   const saved = state.project?.saved;
   await leaveProject();
   if (saved) toast('Saved. Pick it up again under “Continue where you left off”.', 'ok', 4000);
+}
+
+// ---------------------------------------------------------------- panel layout
+
+// The panel's extras: a handle to resize the preview (double-click: small or
+// normal), a switch for the caption timeline, and sections that fold away. Each
+// tool keeps its scroll position and folded sections.
+function panelChrome(root, rail, panel) {
+  const set = (px) => { root.style.setProperty('--pv-h', `${px}px`); keep('capstudio-panel-pv', px); };
+  const saved = remember('capstudio-panel-pv', null);
+  if (saved) root.style.setProperty('--pv-h', `${saved}px`);
+  const grip = h('div', { class: 'pv-resize', role: 'separator', 'aria-label': 'Resize the preview', title: 'Drag to resize the preview. Double-click: small or normal.' }, h('i'));
+  grip.addEventListener('pointerdown', (e) => {
+    const stageWrap = root.querySelector('.stage-wrap');
+    const y0 = e.clientY, h0 = stageWrap.getBoundingClientRect().height;
+    grip.setPointerCapture(e.pointerId);
+    const move = (ev) => set(Math.round(Math.min(innerHeight * 0.75, Math.max(150, h0 + ev.clientY - y0))));
+    const up = () => { grip.removeEventListener('pointermove', move); grip.removeEventListener('pointerup', up); };
+    grip.addEventListener('pointermove', move);
+    grip.addEventListener('pointerup', up);
+  });
+  grip.addEventListener('dblclick', () => {
+    const cur = root.querySelector('.stage-wrap').getBoundingClientRect().height;
+    set(cur > 220 ? 180 : Math.round(innerHeight * 0.42));
+  });
+  root.insertBefore(grip, rail);
+  const showTl = remember('capstudio-panel-tl', false);
+  root.classList.toggle('show-tl', showTl);
+  const tlBtn = h('button', { class: 'rail-toggle', type: 'button', 'aria-pressed': String(showTl), 'data-tip': 'Show the caption timeline', 'aria-label': 'Caption timeline',
+    html: `${icon('film')}<span>Timing</span>`, onclick: () => {
+      const on = !root.classList.contains('show-tl');
+      root.classList.toggle('show-tl', on);
+      tlBtn.setAttribute('aria-pressed', String(on));
+      keep('capstudio-panel-tl', on);
+    } });
+  rail.append(tlBtn);
+  // fold a section by its title; remembered per tool
+  const folded = new Set(remember('capstudio-panel-folded', []));
+  const keyOf = (sec) => `${state.tool}:${sec.querySelector(':scope > h3')?.textContent.trim()}`;
+  panel.addEventListener('click', (e) => {
+    const title = e.target.closest('.section > h3');
+    if (!title) return;
+    const sec = title.parentElement;
+    const k = keyOf(sec);
+    if (folded.has(k)) folded.delete(k); else folded.add(k);
+    sec.classList.toggle('folded', folded.has(k));
+    keep('capstudio-panel-folded', [...folded]);
+  });
+  new MutationObserver(() => {
+    panel.querySelectorAll('.section > h3').forEach((t) => { if (!t.tabIndex) { t.tabIndex = 0; t.setAttribute('role', 'button'); } t.parentElement.classList.toggle('folded', folded.has(keyOf(t.parentElement))); });
+  }).observe(panel, { childList: true, subtree: true });
+  panel.addEventListener('keydown', (e) => { if ((e.key === 'Enter' || e.key === ' ') && e.target.matches('.section > h3')) { e.preventDefault(); e.target.click(); } });
+}
+
+// Where each tool was scrolled to, and which "more" groups were open, so switching
+// tools and coming back finds everything as it was.
+const toolMemory = new Map();
+function rememberTool(tool) {
+  const body = $('#panel .panel-body');
+  if (!tool || !body) return;
+  toolMemory.set(tool, { top: body.scrollTop, open: [...body.querySelectorAll('details.more[open] > summary')].map((s) => s.textContent.trim()) });
+}
+function restoreTool(tool) {
+  const m = toolMemory.get(tool), body = $('#panel .panel-body');
+  if (!m || !body) return;
+  body.querySelectorAll('details.more > summary').forEach((s) => { if (m.open.includes(s.textContent.trim())) s.parentElement.open = true; });
+  requestAnimationFrame(() => { body.scrollTop = m.top; });
 }
 
 let lastTool = null;
@@ -418,8 +498,10 @@ function refreshEditor(what) {
   document.querySelectorAll('.rail button').forEach((b) => b.setAttribute('aria-selected', String(b.dataset.tool === state.tool)));
   renderFlow();
   if (state.tool !== lastTool || what === 'project' || what === 'tool' || !$('#panel').firstChild) {
+    rememberTool(lastTool);
     lastTool = state.tool;
     renderPanel($('#panel'), state.tool);
+    restoreTool(state.tool);
   } else if (['style', 'captions', 'history', 'selection', 'active', 'thumb', 'transcript', 'watermark'].includes(what)) {
     PANELS[state.tool]?.update?.(what);
   }
@@ -448,6 +530,9 @@ document.addEventListener('keydown', (e) => {
   if (mod && e.key.toLowerCase() === 'z' && !typing) { e.preventDefault(); if (e.shiftKey) redo(); else undo(); return; }
   if (mod && e.key.toLowerCase() === 'y' && !typing) { e.preventDefault(); redo(); return; }
   if (typing) return;
+  // 1–7 switch tools
+  const n = Number(e.key);
+  if (!mod && !e.altKey && n >= 1 && n <= TOOL_IDS.length) { e.preventDefault(); set({ tool: TOOL_IDS[n - 1] }, 'tool'); return; }
   if (e.code === 'Space') { e.preventDefault(); stage?.toggle(); }
   if (e.key === 'ArrowLeft') { e.preventDefault(); stage?.seekBy(e.shiftKey ? -5 : -1); }
   if (e.key === 'ArrowRight') { e.preventDefault(); stage?.seekBy(e.shiftKey ? 5 : 1); }

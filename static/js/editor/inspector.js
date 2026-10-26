@@ -7,13 +7,13 @@ import { icon } from '../app/icons.js';
 import { fmtTime, h } from '../app/ui.js';
 import { TEMPLATES } from '../templates/library.js';
 import {
-  allKeyTimes, BLENDS, clipById, EASES, EFFECT_KEYS, EFFECTS, keyAt, LOOKS, makeClip, PRESETS, setSpeed, setValue, TEXT_ANIMS,
+  allKeyTimes, ANIMS_IN, ANIMS_LOOP, BLENDS, clipById, EASES, EFFECT_KEYS, EFFECTS, keyAt, LOOKS, makeClip, PRESETS, setSpeed, setValue, TEXT_ANIMS, TREND_KEYS,
   toggleKey, TRANSITIONS, valueAt, addClip, freeTrack,
 } from './model.js';
 import { ed, edit, on, selectedClips, setPlayhead } from './store.js';
 
 const SWATCHES = ['#FFFFFF', '#111111', '#FFE14D', '#FF9F1C', '#FF4D4D', '#FF4FD8', '#7C5CFF', '#6037D7', '#4F6BFF', '#00E5FF', '#3DFF7A', '#F4EBDD'];
-const TYPE_NAME = { video: 'Video', image: 'Image', audio: 'Audio', text: 'Text', shape: 'Shape', captions: 'Captions' };
+const TYPE_NAME = { video: 'Video', image: 'Image', audio: 'Audio', text: 'Text', shape: 'Shape', captions: 'Captions', adjust: 'Adjustment' };
 
 export function mountInspector(root) {
   let syncs = [], shape = '';
@@ -137,6 +137,9 @@ export function mountInspector(root) {
     return section('Colour & effects', h('div', { class: 'ins-sub' }, 'Look'), looks,
       ...EFFECT_KEYS.map((k) => numRow(c, { label: EFFECTS[k].label, min: EFFECTS[k].min, max: EFFECTS[k].max,
         get: () => clipById(ed.project, c.id).fx?.[k] || 0, set: (v) => change(c.id, (x) => { x.fx = { ...x.fx, [k]: v }; }, `${c.id}-fx-${k}`) })),
+      h('div', { class: 'ins-sub' }, 'Trending'),
+      ...TREND_KEYS.filter((k) => !EFFECTS[k].adjustOnly || c.type === 'adjust').map((k) => numRow(c, { label: EFFECTS[k].label, min: EFFECTS[k].min, max: EFFECTS[k].max,
+        get: () => clipById(ed.project, c.id).fx?.[k] || 0, set: (v) => change(c.id, (x) => { x.fx = { ...x.fx, [k]: v }; }, `${c.id}-fx-${k}`) })),
       h('button', { class: 'linkish', type: 'button', onclick: () => change(c.id, (x) => { x.fx = {}; x.look = 'none'; }) }, 'Reset colour'));
   }
 
@@ -207,6 +210,19 @@ export function mountInspector(root) {
         addClip(p, ac, { track: freeTrack(p, 'audio', x.start, x.dur).id, at: x.start });
         x.audio = { ...x.audio, detached: true };
       }) }) : null);
+  }
+
+  function animSection(c) {
+    const a = () => clipById(ed.project, c.id)?.anim || {};
+    const setA = (patch, key) => change(c.id, (x) => { x.anim = { inDur: 0.5, outDur: 0.4, loopAmt: 50, ...(x.anim || {}), ...patch }; }, key);
+    return section('Animation',
+      selectRow('In', Object.entries(ANIMS_IN), () => a().in || 'none', (v) => setA({ in: v })),
+      a().in && a().in !== 'none' ? numRow(c, { label: 'In length', min: 0.1, max: 3, step: 0.05, digits: 2, get: () => a().inDur ?? 0.5, set: (v) => setA({ inDur: v }, `${c.id}-aid`), unit: 's' }) : null,
+      selectRow('Out', Object.entries(ANIMS_IN), () => a().out || 'none', (v) => setA({ out: v })),
+      a().out && a().out !== 'none' ? numRow(c, { label: 'Out length', min: 0.1, max: 3, step: 0.05, digits: 2, get: () => a().outDur ?? 0.4, set: (v) => setA({ outDur: v }, `${c.id}-aod`), unit: 's' }) : null,
+      selectRow('On screen', Object.entries(ANIMS_LOOP), () => a().loop || 'none', (v) => setA({ loop: v })),
+      a().loop && a().loop !== 'none' ? numRow(c, { label: 'Strength', min: 0, max: 150, get: () => a().loopAmt ?? 50, set: (v) => setA({ loopAmt: v }, `${c.id}-ala`), unit: '%' }) : null,
+      h('p', { class: 'hint' }, 'Works on top of keyframes and transitions.'));
   }
 
   function speedSection(c) {
@@ -297,8 +313,11 @@ export function mountInspector(root) {
         c.type === 'text' ? textSection(c) : null,
         c.type === 'shape' ? shapeSection(c) : null,
         c.type === 'captions' ? captionsSection(c) : null,
-        c.type !== 'audio' && c.type !== 'captions' ? transform(c) : null,
-        c.type === 'video' || c.type === 'image' || c.type === 'text' || c.type === 'shape' ? effects(c) : null,
+        c.type !== 'audio' && c.type !== 'captions' && c.type !== 'adjust' ? transform(c) : null,
+        c.type === 'adjust' ? section('Adjustment layer', h('p', { class: 'hint' }, 'Its colour and effects change everything on the tracks below it while it lasts. Its opacity sets how strongly.'),
+          numRow(c, { label: 'Opacity', min: 0, max: 100, prop: 'opacity', unit: '%', toView: (v) => v * 100, fromView: (v) => v / 100 })) : null,
+        ['video', 'image', 'text', 'shape', 'adjust'].includes(c.type) ? effects(c) : null,
+        ['video', 'image', 'text', 'shape'].includes(c.type) ? animSection(c) : null,
         c.type === 'video' || c.type === 'audio' ? audioSection(c) : null,
         c.type === 'video' || c.type === 'audio' ? speedSection(c) : null,
         c.type !== 'audio' && c.type !== 'captions' ? transSection(c) : null];
@@ -312,14 +331,26 @@ export function mountInspector(root) {
     const sel = selectedClips();
     if (sel.length !== 1) return `${sel.length}|${sel.map((c) => c.id).join()}|${ed.project?.W}x${ed.project?.H}`;
     const c = sel[0];
-    return [c.id, c.type, c.text?.bg, c.text?.outline ? 1 : 0, c.shape?.kind, !!c.transIn, !!c.transOut, c.audio?.detached, c.captions?.length].join('|');
+    return [c.id, c.type, c.text?.bg, c.text?.outline ? 1 : 0, c.shape?.kind, !!c.transIn, !!c.transOut, c.audio?.detached, c.captions?.length,
+      c.anim?.in, c.anim?.out, c.anim?.loop].join('|');
+  };
+  // values are refreshed at most once a frame, and a few times a second while playing
+  let queued = false, lastPlaySync = 0;
+  const syncSoon = () => {
+    if (queued) return;
+    queued = true;
+    requestAnimationFrame(() => { queued = false; syncs.forEach((f) => f()); });
   };
   on((what) => {
     if (!ed.project) return;
     if (['selection', 'open', 'project'].includes(what)) {
       const s = shapeOf();
-      if (s !== shape || what !== 'project') { shape = s; build(); } else syncs.forEach((f) => f());
-    } else if (what === 'time') syncs.forEach((f) => f());
+      if (s !== shape || what !== 'project') { shape = s; build(); } else syncSoon();
+    } else if (what === 'time') {
+      if (ed.playing && performance.now() - lastPlaySync < 150) return;
+      lastPlaySync = performance.now();
+      syncSoon();
+    }
   });
   return { build };
 }

@@ -5,9 +5,11 @@
 import { icon } from '../app/icons.js';
 import { fmtTime, h } from '../app/ui.js';
 import {
-  addTrack, allKeyTimes, clipById, closeGap, duration, end, moveClip, removeTrack, snapPoints, splitClip, trimEnd, trimStart, valueAt,
+  addTrack, allKeyTimes, clipById, closeGap, duration, end, moveClip, removeTrack, setSpeed, snapPoints, splitClip, trimEnd, trimStart, valueAt,
 } from './model.js';
+import { copySelection, deleteSelection, duplicateSelection, paste, splitAtPlayhead } from './actions.js';
 import { thumbnails, waveform } from './media.js';
+import { openMenu } from './menu.js';
 import { ed, edit, emit, on, select, setPlayhead } from './store.js';
 
 const HEAD_W = 136, RULER_H = 28, LANE_H = { video: 62, audio: 50 }, EDGE = 7, SNAP_PX = 9;
@@ -18,6 +20,7 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
   const lanes = h('div', { class: 'et-lanes' });
   const playhead = h('div', { class: 'et-playhead' }, h('span', { class: 'et-playhead-cap' }));
   const inner = h('div', { class: 'et-inner' }, ruler, lanes, playhead);
+  const marquee = h('div', { class: 'et-marquee' });
   const scroll = h('div', { class: 'et-scroll' }, inner);
   const zoomRange = h('input', { type: 'range', class: 'range et-zoom', min: 0, max: 100, step: 1, 'aria-label': 'Timeline zoom' });
   const toolBtn = (tool, ico, tip) => h('button', { class: 'btn ghost sm icon-only', type: 'button', 'data-tool': tool, 'data-tip': tip, 'aria-label': tip,
@@ -100,15 +103,28 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
       if (isMajor) c.fillText(fmtRuler(t, major), x + 4, 12);
     }
     c.stroke();
+    // the music's beats, when found
+    const beats = ed.project?.beats?.times;
+    if (beats) {
+      c.fillStyle = '#ffd166';
+      for (const b of beats) { const x = b * ed.zoom; if (x > w) break; c.beginPath(); c.moveTo(x - 3, RULER_H); c.lineTo(x + 3, RULER_H); c.lineTo(x, RULER_H - 5); c.fill(); }
+    }
   }
 
+  // Lanes and clips are kept and updated in place: a clip that only moved is just
+  // repositioned (its frames and waveform aren't drawn again), so dragging stays smooth.
+  const laneEls = new Map(), clipEls = new Map();
   function laneFor(track) {
-    const row = h('div', { class: `et-lane ${track.type}${track.locked ? ' locked' : ''}${track.hidden || track.muted ? ' off' : ''}`,
-      'data-track': track.id, style: { height: `${LANE_H[track.type]}px` } });
-    const cs = ed.project.clips.filter((c) => c.track === track.id);
-    for (const c of cs) row.append(clipEl(c, track));
+    let row = laneEls.get(track.id);
+    if (!row) { row = h('div', { 'data-track': track.id }); laneEls.set(track.id, row); }
+    row.className = `et-lane ${track.type}${track.locked ? ' locked' : ''}${track.hidden || track.muted ? ' off' : ''}`;
+    row.style.height = `${LANE_H[track.type]}px`;
     return row;
   }
+  // everything that changes how a clip looks, apart from where it is
+  const contentOf = (c) => JSON.stringify([c.type, c.name, c.asset, c.in, c.dur, c.speed, ed.zoom, ed.selection.includes(c.id),
+    c.text?.content, Object.keys(c.keys || {}).length, ed.selection.includes(c.id) ? allKeyTimes(c) : 0, c.transIn, c.transOut,
+    c.audio?.fadeIn, c.audio?.fadeOut, c.audio?.detached, c.captions?.length, c.captions?.[0]?.start, c.anim, c.keys?.volume]);
 
   function clipEl(c, track) {
     const sel = ed.selection.includes(c.id);
@@ -209,7 +225,26 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
     const total = Math.max(duration(p) + 20, scroll.clientWidth / ed.zoom);
     inner.style.width = `${total * ed.zoom}px`;
     heads.replaceChildren(h('div', { class: 'et-heads-top', style: { height: `${RULER_H}px` } }), ...p.tracks.map(headFor));
-    lanes.replaceChildren(...p.tracks.map(laneFor));
+    const rows = p.tracks.map(laneFor);
+    if (rows.some((r, i) => lanes.children[i] !== r) || lanes.children.length !== rows.length) lanes.replaceChildren(...rows);
+    for (const id of laneEls.keys()) if (!p.tracks.some((t) => t.id === id)) laneEls.delete(id);
+    const seen = new Set();
+    for (const c of p.clips) {
+      seen.add(c.id);
+      const track = p.tracks.find((t) => t.id === c.track);
+      const sig = contentOf(c);
+      let e = clipEls.get(c.id);
+      if (!e || e.sig !== sig) {
+        const el = clipEl(c, track);
+        if (e) e.el.replaceWith(el);
+        e = { el, sig };
+        clipEls.set(c.id, e);
+      }
+      e.el.style.left = `${c.start * ed.zoom}px`;
+      const row = laneEls.get(c.track);
+      if (e.el.parentNode !== row) row.append(e.el);
+    }
+    for (const [id, e] of clipEls) if (!seen.has(id)) { e.el.remove(); clipEls.delete(id); }
     zoomRange.value = zTo(ed.zoom);
     toolbar.querySelectorAll('[data-tool]').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.tool === ed.tool)));
     toolbar.querySelectorAll('[data-toggle]').forEach((b) => b.setAttribute('aria-pressed', String(!!ed[b.dataset.toggle])));
@@ -234,11 +269,17 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
     if (keyBtn) { setPlayhead(Number(keyBtn.dataset.t)); return; }
     const clipNode = e.target.closest('.et-clip');
     const t = x2t(e.clientX);
-    if (!clipNode || e.target.closest('.et-ruler')) {
-      // the ruler or empty space: move the playhead (and scrub while dragging)
-      if (!e.shiftKey && !clipNode) select([]);
+    if (e.target.closest('.et-ruler') || (!clipNode && !e.target.closest('.et-lane'))) {
+      // the ruler: move the playhead (and scrub while dragging)
       setPlayhead(snap(t, [], 6));
       drag = { kind: 'scrub' };
+      scroll.setPointerCapture(e.pointerId);
+      return;
+    }
+    if (!clipNode) {
+      // empty track space: drag a box to select clips (a click deselects and moves the playhead)
+      const r = inner.getBoundingClientRect();
+      drag = { kind: 'marquee', x0: e.clientX - r.left, y0: e.clientY - r.top, t0: t, add: e.shiftKey ? [...ed.selection] : [], moved: false };
       scroll.setPointerCapture(e.pointerId);
       return;
     }
@@ -265,18 +306,52 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
     scroll.setPointerCapture(e.pointerId);
   });
 
+  // pointer moves are handled once per frame (the latest one), however fast they come
+  let pending = null;
   scroll.addEventListener('pointermove', (e) => {
+    if (!drag) { hover(e); return; }
+    const first = !pending;
+    pending = e;
+    if (first) requestAnimationFrame(() => { const ev = pending; pending = null; if (drag) dragTo(ev); });
+  });
+  function hover(e) {
     const clipNode = e.target.closest?.('.et-clip');
-    if (!drag) {
-      // edge cursor
-      if (clipNode && ed.tool === 'select') {
-        const r = clipNode.getBoundingClientRect();
-        scroll.style.cursor = e.clientX - r.left < EDGE || r.right - e.clientX < EDGE ? 'ew-resize' : '';
-      } else scroll.style.cursor = '';
-      return;
-    }
+    // edge cursor
+    if (clipNode && ed.tool === 'select') {
+      const r = clipNode.getBoundingClientRect();
+      scroll.style.cursor = e.clientX - r.left < EDGE || r.right - e.clientX < EDGE ? 'ew-resize' : '';
+    } else scroll.style.cursor = '';
+  }
+  // near the left or right edge while dragging, the timeline scrolls along
+  function edgeScroll(e) {
+    if (!drag) return;
+    const r = scroll.getBoundingClientRect(), zone = 48;
+    const d = e.clientX < r.left + zone ? -(r.left + zone - e.clientX) : e.clientX > r.right - zone ? e.clientX - (r.right - zone) : 0;
+    if (!d) return;
+    scroll.scrollLeft += d * 0.6;
+    requestAnimationFrame(() => { if (drag && !pending) dragTo(e); });
+  }
+  function dragTo(e) {
+    edgeScroll(e);
     const t = x2t(e.clientX);
     if (drag.kind === 'scrub') { setPlayhead(snap(t, [], 6)); return; }
+    if (drag.kind === 'marquee') {
+      const r = inner.getBoundingClientRect();
+      const x1 = e.clientX - r.left, y1 = e.clientY - r.top;
+      if (!drag.moved && Math.hypot(x1 - drag.x0, y1 - drag.y0) < 4) return;
+      drag.moved = true;
+      const box = { l: Math.min(drag.x0, x1), t: Math.min(drag.y0, y1), w: Math.abs(x1 - drag.x0), h: Math.abs(y1 - drag.y0) };
+      Object.assign(marquee.style, { left: `${box.l}px`, top: `${box.t}px`, width: `${box.w}px`, height: `${box.h}px` });
+      if (!marquee.isConnected) inner.append(marquee);
+      const hit = [];
+      for (const [id, ce] of clipEls) {
+        const cr = ce.el.getBoundingClientRect();
+        const cl = cr.left - r.left, ct = cr.top - r.top;
+        if (cl < box.l + box.w && cl + cr.width > box.l && ct < box.t + box.h && ct + cr.height > box.t) hit.push(id);
+      }
+      select([...new Set([...drag.add, ...hit])]);
+      return;
+    }
     if (!drag.moved && Math.abs(e.clientX - drag.x0) < 3) return;
     drag.moved = true;
     if (drag.kind === 'trim-l') { const to = snap(drag.start + (t - drag.t0), [drag.id]); edit((p) => trimStart(p, drag.id, to), drag.key); return; }
@@ -296,9 +371,14 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
         if (!moveClip(p, o.id, o.start + delta, target)) moveClip(p, o.id, o.start + delta, o.track);
       }
     }, drag.key);
-  });
+  }
 
-  const stop = () => { drag = null; };
+  const stop = () => {
+    if (pending && drag) dragTo(pending);
+    pending = null;
+    if (drag?.kind === 'marquee') { marquee.remove(); if (!drag.moved) { select([]); setPlayhead(snap(drag.t0, [], 6)); } }
+    drag = null;
+  };
   scroll.addEventListener('pointerup', stop);
   scroll.addEventListener('pointercancel', stop);
   scroll.addEventListener('dblclick', (e) => {
@@ -307,6 +387,34 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
       const d = edit((p) => closeGap(p, lane.dataset.track, x2t(e.clientX)));
       if (!d) emit('project');
     }
+  });
+
+  // right-click a clip: the usual edits in one place
+  scroll.addEventListener('contextmenu', (e) => {
+    const node = e.target.closest('.et-clip');
+    e.preventDefault();
+    if (!node) {
+      openMenu(e.clientX, e.clientY, [{ label: 'Paste here', hint: 'Ctrl+V', run: () => { setPlayhead(x2t(e.clientX)); paste(); } }]);
+      return;
+    }
+    const c = clipById(ed.project, node.dataset.id);
+    if (!ed.selection.includes(c.id)) select([c.id]);
+    const at = x2t(e.clientX);
+    const media = c.type === 'video' || c.type === 'audio';
+    openMenu(e.clientX, e.clientY, [
+      { label: 'Split here', hint: 'C', run: () => edit((p) => splitClip(p, c.id, snap(at, []))) },
+      { label: 'Split at the playhead', hint: 'S', run: splitAtPlayhead },
+      null,
+      { label: 'Duplicate', hint: 'Ctrl+D', run: duplicateSelection },
+      { label: 'Copy', hint: 'Ctrl+C', run: copySelection },
+      { label: 'Paste at the playhead', hint: 'Ctrl+V', run: paste },
+      null,
+      media ? { title: 'Speed', row: [0.5, 1, 1.5, 2, 4].map((v) => ({ label: `${v}×`, on: c.speed === v, run: () => edit((p) => setSpeed(p, c.id, v)) })) } : false,
+      c.type !== 'audio' && c.type !== 'captions' ? { title: 'In', row: [['', 'None'], ['dissolve', 'Dissolve'], ['zoom', 'Zoom'], ['whip-left', 'Whip']].map(([t, l]) => ({
+        label: l, on: (c.transIn?.type || '') === t, run: () => edit((p) => { clipById(p, c.id).transIn = t ? { type: t, dur: 0.5 } : null; }) })) } : false,
+      { label: 'Delete', hint: 'Del', run: () => deleteSelection(false) },
+      { label: 'Delete and close the gap', hint: 'Shift+Del', run: () => deleteSelection(true) },
+    ].filter((x) => x !== false));
   });
 
   scroll.addEventListener('wheel', (e) => {

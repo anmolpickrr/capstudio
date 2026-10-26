@@ -5,7 +5,7 @@
 import { CaptionEngine } from '../engine/index.js';
 import { ensureFonts } from '../engine/fonts.js';
 import { fontById } from '../engine/fonts.js';
-import { AUDIBLE, duration, gainAt, transitionsFor } from './model.js';
+import { AUDIBLE, duration, gainAt, prevAdjacent, transitionsFor } from './model.js';
 import { bitmapOf, cachedBitmap, urlOf } from './media.js';
 import { drawFrame, mediaTime } from './render.js';
 import { ed, emit, setPlayhead } from './store.js';
@@ -21,9 +21,13 @@ export class Player {
     this.audio = null;
     this.raf = 0;
     this.dirty = true;
+    // 'auto': drawn at the size it's shown (sharp, and far less work); 'full': every pixel
+    this.quality = 'auto';
+    this.display = null;
+    this.scale = 1;
     this.src = {
       frame: (c) => {
-        const e = this.els.get(c.id);
+        const e = this.els.get(this.keyOf(c));
         if (!e) return null;
         // while a frame is being fetched, keep showing the last one (no black flashes)
         if (e.el.readyState < 2 || !e.el.videoWidth || e.el.seeking) return e.snap ? { img: e.snap, w: e.snap.width, h: e.snap.height } : null;
@@ -52,9 +56,17 @@ export class Player {
 
   invalidate() { this.dirty = true; }
 
+  // The size the preview is shown at, in CSS pixels.
+  setDisplay(w, h) { this.display = { w, h }; this.resize(); }
+
+  setQuality(q) { this.quality = q; this.resize(); }
+
   resize() {
     const p = ed.project;
-    if (this.canvas.width !== p.W || this.canvas.height !== p.H) { this.canvas.width = p.W; this.canvas.height = p.H; }
+    const dpr = devicePixelRatio || 1;
+    this.scale = this.quality === 'full' || !this.display ? 1 : Math.min(1, Math.max(0.1, (this.display.w * dpr) / p.W));
+    const w = Math.max(2, Math.round(p.W * this.scale)), h = Math.max(2, Math.round(p.H * this.scale));
+    if (this.canvas.width !== w || this.canvas.height !== h) { this.canvas.width = w; this.canvas.height = h; }
     this.invalidate();
   }
 
@@ -96,10 +108,30 @@ export class Player {
     } catch { /* already wired */ }
   }
 
+  // Pieces of one video cut apart (same file and speed, continuing where the last
+  // one stopped, no transition) share a video element, so playback runs straight
+  // through those cuts without loading or seeking.
+  keyOf(c) {
+    const p = ed.project;
+    if (this.chainRev !== p.rev || this.chainProject !== p) { this.chains = new Map(); this.chainRev = p.rev; this.chainProject = p; }
+    let k = this.chains.get(c.id);
+    if (k) return k;
+    k = c.id;
+    const prev = prevAdjacent(p, c);
+    if (prev && prev.asset === c.asset && prev.type === c.type && prev.speed === c.speed && !c.transIn?.type
+      && Math.abs(prev.in + prev.dur * prev.speed - c.in) < 0.05) k = this.keyOf(prev);
+    this.chains.set(c.id, k);
+    return k;
+  }
+
   element(c) {
-    let e = this.els.get(c.id);
+    const key = this.keyOf(c);
+    let e = this.els.get(key);
     if (e && e.asset === c.asset) { e.lastUsed = performance.now(); return e; }
-    if (e) { e.el.pause(); this.els.delete(c.id); }
+    if (e) { e.el.pause(); this.els.delete(key); }
+    // an idle element already playing this file is reused (no new load)
+    const idle = [...this.els.entries()].find(([k, x]) => x.asset === c.asset && !this.wanted?.includes(k) && !this.wantedNow?.has(k));
+    if (idle) { this.els.delete(idle[0]); this.els.set(key, idle[1]); idle[1].lastUsed = performance.now(); return idle[1]; }
     const asset = ed.project.assets[c.asset];
     const el = document.createElement(c.type === 'audio' ? 'audio' : 'video');
     el.preload = 'auto';
@@ -118,7 +150,7 @@ export class Player {
     };
     el.addEventListener('loadeddata', redraw);
     el.addEventListener('seeked', redraw);
-    this.els.set(c.id, e);
+    this.els.set(key, e);
     this.wire(e);
     if (this.els.size > POOL) this.trim();
     return e;
@@ -139,16 +171,26 @@ export class Player {
   sync(t) {
     const p = ed.project;
     const wanted = [];
+    this.wantedNow = new Set();
+    // the clip playing now claims its element before ones being readied ahead
+    const near = [];
     for (const c of p.clips) {
       if (c.type !== 'video' && c.type !== 'audio') continue;
       const w = transitionsFor(p, c);
       // ready a second before it's needed
       if (t < w.from - 1 || t > w.to) continue;
-      wanted.push(c.id);
+      near.push({ c, w, inside: t >= w.from && t < w.to });
+    }
+    near.sort((a, b) => (b.inside - a.inside) || (a.w.from - b.w.from));
+    for (const { c, w, inside } of near) {
+      const key = this.keyOf(c);
+      // a shared element follows the piece that's on screen
+      if (this.wantedNow.has(key) && !inside) continue;
+      wanted.push(key);
+      this.wantedNow.add(key);
       const e = this.element(c);
       const el = e.el;
       if (el.readyState < 1) continue;
-      const inside = t >= w.from && t < w.to;
       const st = mediaTime(p, c, Math.max(t, w.from));
       if (e.gain) e.gain.gain.value = inside ? gainAt(p, c, t) : 0;
       if (ed.playing && inside) {
@@ -185,8 +227,11 @@ export class Player {
 
   // Load the fonts text clips use, then redraw.
   prepareFonts() {
-    const fonts = ed.project.clips.filter((c) => c.type === 'text').map((c) => fontById(c.text.font));
-    if (fonts.length) ensureFonts(fonts).then((fresh) => { if (fresh) this.invalidate(); });
+    const ids = [...new Set(ed.project.clips.filter((c) => c.type === 'text').map((c) => c.text.font))];
+    const key = ids.join();
+    if (!ids.length || key === this.fontKey) return;
+    this.fontKey = key;
+    ensureFonts(ids.map(fontById)).then((fresh) => { if (fresh) this.invalidate(); });
   }
 
   // ---------------------------------------------------------------- frame loop
@@ -203,7 +248,7 @@ export class Player {
     this.sync(ed.playhead);
     if (!this.dirty) return;
     this.dirty = false;
-    drawFrame(this.ctx, p, ed.playhead, this.src);
+    drawFrame(this.ctx, p, ed.playhead, this.src, this.canvas.width / p.W);
     emit('frame');
   }
 }

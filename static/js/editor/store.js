@@ -34,6 +34,7 @@ export function edit(fn, key = null) {
   }
   lastKey = key; lastAt = now;
   const out = fn(ed.project);
+  ed.project.rev = (ed.project.rev || 0) + 1; // (cached results about the project are stale)
   ed.selection = ed.selection.filter((id) => ed.project.clips.some((c) => c.id === id));
   emit('project');
   scheduleSave();

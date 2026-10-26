@@ -387,12 +387,20 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
         const f = (id) => p.clips.find((c) => c.id === id);
         f(vids[0].id).look = 'film';
         f(vids[1].id).keys.scale = [{ t: 0, v: 1, ease: 'linear' }, { t: 5, v: 1.3, ease: 'linear' }];
-        f(vids[1].id).transIn = { type: 'push-left', dur: 0.6 };
+        f(vids[1].id).transIn = { type: 'whip-left', dur: 0.6 };
+        f(vids[0].id).fx = { vhs: 60 };
+        f(vids[1].id).anim = { loop: 'kenburns', loopAmt: 60, in: 'none', out: 'none' };
         f(vids[2].id).transIn = { type: 'dissolve', dur: 1 };
         f(text.id).keys.rotation = [{ t: 0, v: -10, ease: 'inout' }, { t: 3, v: 10, ease: 'inout' }];
         f(circle.id).keys.x = [{ t: 0, v: -300, ease: 'linear' }, { t: 5, v: 300, ease: 'linear' }];
         f(circle.id).blend = 'screen';
         f(circle.id).transOut = { type: 'zoom', dur: 0.6 };
+        // an adjustment layer over everything: film grain and cinema bars
+        const top = { id: 'tadj', type: 'video', name: 'V3', muted: false, hidden: false, locked: false };
+        p.tracks.unshift(top);
+        p.clips.push({ id: 'adj1', type: 'adjust', name: 'Adjustment layer', track: 'tadj', start: 0, dur: 20, in: 0, speed: 1,
+          props: { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, volume: 1 }, keys: {}, fit: 'contain', blend: 'source-over', fx: { grain: 25, bars: 50 },
+          look: 'none', audio: { fadeIn: 0, fadeOut: 0, mute: false }, transIn: null, transOut: null });
         Object.assign(f(music[0].id).audio, { fadeIn: 1 });
         Object.assign(f(music[1].id).audio, { fadeOut: 2 });
       });
@@ -412,6 +420,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     const times = [1.0, 3.1, 4.4, 6.5, 9.0, 11.2];
     const res = await page.evaluate(async (times) => {
       const { player, setPlayhead } = window.__editor;
+      player.setQuality('full'); // every pixel, like the export
       const blob = await (await fetch(document.querySelector('#ed-export-status .result.ok a').href)).blob();
       const mbx = await import('/vendor/mediabunny-1.61.0.min.js');
       const input = new mbx.Input({ source: new mbx.BlobSource(blob), formats: mbx.ALL_FORMATS });
@@ -448,7 +457,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     if (!(res.rms[0] < res.rms[1] * 0.4 && res.rms[2] < res.rms[1] * 0.6 && res.rms[1] > 0.03)) diffs.push(`sound ${res.rms.join(', ')}`);
     if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
     if (diffs.length) throw new Error(diffs.join(', '));
-    console.log(`✓ editor: placement, drag, trim, razor, split/delete/undo, real-time playback, looks, keyframes, blend, transitions; export matches the preview (${Math.min(...res.psnr)} dB lowest) with faded sound`);
+    console.log(`✓ editor: placement, drag, trim, razor, split/delete/undo, real-time playback, looks, keyframes, blend, transitions (whip, dissolve), VHS, Ken Burns, adjustment layer (grain, bars); export matches the preview (${Math.min(...res.psnr)} dB lowest) with faded sound`);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-editor.png') }).catch(() => {});
     fail('editor', e.message.split('\n')[0]);
@@ -487,6 +496,59 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-editor-handoff.png') }).catch(() => {});
     fail('Capstudio → editor', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// The Adobe panel's own layout, in a narrow docked panel: the page never scrolls,
+// the preview, every tool tab and the main action stay on screen, only the
+// settings scroll, and each tool keeps its scroll position and folded sections.
+{
+  const page = await browser.newPage({ viewport: { width: 380, height: 860 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__panel/`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the selected clip")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 120000 });
+    const frame = page.frames().find((f) => f.url().includes('host=premiere'));
+    const diffs = [];
+    for (const tool of ['templates', 'text', 'effects', 'motion', 'position', 'watermark', 'captions']) {
+      await frame.click(`.rail button[data-tool="${tool}"]`);
+      const m = await frame.evaluate(() => {
+        const box = (s) => document.querySelector(s).getBoundingClientRect();
+        const tabs = [...document.querySelectorAll('.rail button')].map((b) => b.getBoundingClientRect());
+        return { pageScroll: document.documentElement.scrollHeight - innerHeight, tabsInside: tabs.every((r) => r.left >= -1 && r.right <= innerWidth + 1 && r.bottom <= innerHeight),
+          action: box('#export-btn').bottom <= innerHeight && box('#export-btn').top >= 0, preview: box('.stage-wrap').height > 120,
+          body: (() => { const b = document.querySelector('#panel .panel-body'); return getComputedStyle(b).overflowY; })() };
+      });
+      if (m.pageScroll > 1 || !m.tabsInside || !m.action || !m.preview || m.body !== 'auto') diffs.push(`${tool}: ${JSON.stringify(m)}`);
+    }
+    await frame.click('.rail button[data-tool="templates"]');
+    await frame.evaluate(() => { document.querySelector('#panel .panel-body').scrollTop = 900; });
+    await frame.click('.rail button[data-tool="text"]');
+    await frame.click('.section > h3 >> nth=0');
+    await frame.click('.rail button[data-tool="templates"]');
+    await page.waitForTimeout(150);
+    const back = await frame.evaluate(() => document.querySelector('#panel .panel-body').scrollTop);
+    await frame.click('.rail button[data-tool="text"]');
+    const folded = await frame.evaluate(() => document.querySelector('#panel .section').classList.contains('folded'));
+    await frame.evaluate(() => document.activeElement.blur());
+    await page.keyboard.press('3');
+    const third = await frame.evaluate(() => document.querySelector('.rail button[aria-selected=true]').dataset.tool);
+    if (Math.abs(back - 900) > 2) diffs.push(`styles scroll not kept (${back})`);
+    if (!folded) diffs.push('folded section not kept');
+    if (third !== 'effects') diffs.push(`key 3 opened ${third}`);
+    if (await frame.locator('#to-editor').count()) diffs.push('the editor link shows in the panel');
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ Adobe panel layout (380×860): no page scroll, preview, all tabs and "Add to timeline" always on screen; scroll and folds kept per tool; keys 1–7');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-panel-layout.png') }).catch(() => {});
+    fail('Adobe panel layout', e.message.split('\n')[0]);
   } finally {
     await page.close();
   }

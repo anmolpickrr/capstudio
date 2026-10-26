@@ -20,8 +20,14 @@ export function mountViewer(root, player) {
   const tbtn = (ico, label, fn) => h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': label, 'data-tip': label, html: icon(ico), onclick: fn });
   const time = h('span', { class: 'vw-time' });
   const size = h('span', { class: 'vw-size' });
+  const quality = h('div', { class: 'seg vw-quality', role: 'group', 'aria-label': 'Preview quality' },
+    [['auto', 'Auto', 'Sharp at the size shown, and fastest'], ['full', 'Full', 'Every pixel of the video (to check fine detail)']].map(([v, t, tip]) =>
+      h('button', { type: 'button', 'data-v': v, 'data-tip': tip, 'aria-pressed': String(v === 'auto'), onclick: () => {
+        player.setQuality(v);
+        quality.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.v === v)));
+      } }, t)));
   const controls = h('div', { class: 'vw-controls' },
-    size,
+    h('div', { class: 'vw-left' }, size, quality),
     h('div', { class: 'vw-transport' },
       tbtn('skipBack', 'To the start (Home)', () => setPlayhead(0)),
       tbtn('stepBack', 'Back one frame (←)', () => setPlayhead(ed.playhead - frame())),
@@ -39,6 +45,7 @@ export function mountViewer(root, player) {
     const k = Math.min((r.width - 24) / p.W, (r.height - 24) / p.H);
     stage.style.width = `${Math.max(40, p.W * k)}px`;
     stage.style.height = `${Math.max(40, p.H * k)}px`;
+    player.setDisplay(Math.max(40, p.W * k), Math.max(40, p.H * k));
     overlay.setAttribute('viewBox', `0 0 ${p.W} ${p.H}`);
     size.textContent = `${p.W} × ${p.H} · ${p.fps} fps`;
   };
@@ -141,9 +148,12 @@ export function mountViewer(root, player) {
   stage.addEventListener('pointerup', end);
   stage.addEventListener('pointercancel', end);
 
+  let lastSize = '';
   on((what) => {
-    if (what === 'open') { fit(); player.resize(); player.prepareFonts(); }
-    if (what === 'project') { fit(); player.resize(); player.prepareFonts(); }
+    // only when the project's size changes (not on every edit, which would measure the layout each drag step)
+    const sizeKey = `${ed.project.W}x${ed.project.H}`;
+    if (what === 'open' || (what === 'project' && sizeKey !== lastSize)) { lastSize = sizeKey; fit(); player.resize(); }
+    if (what === 'open' || what === 'project') player.prepareFonts();
     if (['project', 'selection', 'time', 'frame', 'open'].includes(what)) drawHandles();
     if (['project', 'time', 'open', 'selection'].includes(what)) player.invalidate();
     if (what === 'play' || what === 'open') playBtn.innerHTML = icon(ed.playing ? 'pause' : 'play');

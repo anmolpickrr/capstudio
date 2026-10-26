@@ -119,5 +119,52 @@ const v1 = (p) => p.tracks.filter((t) => t.type === 'video').at(-1).id;
   const v = addClip(p, makeClip('video', { asset: 'a', dur: 5, audio: { detached: true } }), { track: v1(p), at: 0 });
   check('a video whose sound was separated is silent itself', gainAt(p, v, 2) === 0);
 }
+// ---------------------------------------------------------------- trending transitions, animations, beats, automation
+{
+  const { transitionLook: look, animMotion } = await import('../static/js/editor/model.js');
+  const flash = look('flash', 0.5, 'in', 1080, 1920), early = look('flash', 0.2, 'out', 1080, 1920);
+  check('flash: white at the cut, the old picture until then', flash.color === '#FFFFFF' && flash.colorAlpha > 0.9 && early.alpha === 1);
+  check('glitch: strongest at the cut', near(look('glitch', 0.5, 'in', 1080, 1920).glitch, 1) && look('glitch', 0.1, 'in', 1080, 1920).alpha === 0);
+  check('iris opens from the centre', look('iris', 0, 'in', 1000, 1000).circle.r === 0 && look('iris', 1, 'in', 1000, 1000).circle.r > 700);
+  const whip = look('whip-left', 0.5, 'out', 1000, 1000);
+  check('whip: motion blur at its peak', whip.blur > 40 && whip.dx < 0);
+  const c = makeClip('image', { dur: 10, anim: { in: 'slide-up', inDur: 1, out: 'fade', outDur: 1, loop: 'kenburns', loopAmt: 50 } });
+  const m0 = animMotion(c, 0, 1000, 2000), m5 = animMotion(c, 5, 1000, 2000), m95 = animMotion(c, 9.5, 1000, 2000);
+  check('slide up starts below and arrives', m0.dy > 600 && near(m5.dy, 0));
+  check('Ken Burns zooms slowly through the clip', m5.scale > 1.05 && m5.scale < 1.07);
+  check('fade out at the end', m95.alpha < 0.95 && m95.alpha > 0);
+}
+{
+  const { findBeats } = await import('../static/js/editor/beats.js');
+  for (const [bpm, off] of [[120, 0.13], [96, 0.31], [150, 0.05]]) {
+    const peaks = new Float32Array(2000);
+    let seed = 7; const rnd = () => ((seed = (seed * 16807) % 2147483647) / 2147483647);
+    for (let i = 0; i < peaks.length; i++) peaks[i] = 0.05 + 0.04 * rnd();
+    const period = 60 / bpm;
+    for (let t = off; t < 20; t += period) { const k = Math.round(t * 100); for (let j = 0; j < 8; j++) peaks[k + j] = Math.max(peaks[k + j] || 0, 0.9 * Math.exp(-j / 3)); }
+    for (let t = off + period / 2; t < 20; t += period) { const k = Math.round(t * 100); peaks[k] = Math.max(peaks[k], 0.3); }
+    const r = findBeats(peaks);
+    const worst = Math.max(...r.beats.map((b) => { const ph = ((b - off) / period) % 1; return Math.min(ph, 1 - ph) * period; }));
+    check(`beat found at ${bpm} BPM (on the beat within 20 ms)`, Math.abs(r.bpm - bpm) <= 1 && worst < 0.02, `${r.bpm} BPM, ${Math.round(worst * 1000)} ms`);
+  }
+}
+{
+  const store = await import('../static/js/editor/store.js');
+  const auto = await import('../static/js/editor/auto.js');
+  const p = project();
+  const t = v1(p);
+  const a = addClip(p, makeClip('video', { asset: 'a', dur: 4 }), { track: t, at: 0 });
+  const b = addClip(p, makeClip('video', { asset: 'a', dur: 4 }), { track: t, at: 4 });
+  const c2 = addClip(p, makeClip('image', { dur: 4 }), { track: t, at: 8 });
+  store.openProject(p);
+  const n = auto.applyTransitionStyle('snappy', { ends: true });
+  check('a transition style on every cut, alternating', n === 2 && b.transIn.type === 'push-left' && c2.transIn.type === 'push-right' && a.transIn?.type === 'dissolve' && c2.transOut);
+  store.edit((x) => { x.beats = { bpm: 120, times: Array.from({ length: 40 }, (_, i) => 0.25 + i * 0.5) }; });
+  auto.cutToBeat(2);
+  const [x1, x2, x3] = store.ed.project.clips.filter((c) => c.track === t).sort((u, v) => u.start - v.start);
+  check('cut to the beat: each clip ends on a beat, the next follows on', near(x1.dur, 0.75) && near(x2.start, 0.75) && near(end(x2), 1.75) && near(x3.start, 1.75), `${x1.dur} ${x2.start} ${end(x2)}`);
+  store.undo(); store.undo();
+  check('undo puts it back', near(store.ed.project.clips.find((c) => c.id === b.id).start, 4));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

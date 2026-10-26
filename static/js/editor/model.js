@@ -41,7 +41,37 @@ export const TRANSITIONS = {
   'wipe-up': { label: 'Wipe up' },
   'wipe-down': { label: 'Wipe down' },
   zoom: { label: 'Zoom in' },
+  'zoom-out': { label: 'Zoom out' },
+  'zoom-blur': { label: 'Zoom blur', trend: true },
+  'whip-left': { label: 'Whip left', trend: true },
+  'whip-right': { label: 'Whip right', trend: true },
+  flash: { label: 'Flash', trend: true },
+  spin: { label: 'Spin', trend: true },
+  glitch: { label: 'Glitch', trend: true },
+  iris: { label: 'Iris' },
+  split: { label: 'Split' },
   blur: { label: 'Blur' },
+};
+
+// One click for every cut: a transition style (with a length) applied across the edit.
+export const TRANSITION_STYLES = {
+  smooth: { label: 'Smooth', note: 'Cross dissolves', types: ['dissolve'], dur: 0.6 },
+  cinematic: { label: 'Cinematic', note: 'Dips to black', types: ['dip-black'], dur: 0.9 },
+  snappy: { label: 'Snappy', note: 'Pushes, alternating', types: ['push-left', 'push-right'], dur: 0.35 },
+  energetic: { label: 'Energetic', note: 'Whips, zooms, flashes', types: ['whip-left', 'zoom-blur', 'whip-right', 'flash'], dur: 0.3 },
+  glitchy: { label: 'Glitchy', note: 'Digital glitches', types: ['glitch'], dur: 0.35 },
+  dreamy: { label: 'Dreamy', note: 'Soft blurs', types: ['blur', 'dissolve'], dur: 0.8 },
+  mixed: { label: 'Mixed', note: 'A bit of everything', types: ['dissolve', 'whip-left', 'zoom-blur', 'slide-up', 'flash', 'spin', 'push-right', 'iris'], dur: 0.45 },
+};
+
+// Animations any picture, title or shape can have: in, out, and a loop while on screen.
+export const ANIMS_IN = {
+  none: 'None', fade: 'Fade', pop: 'Pop', 'zoom-in': 'Zoom in', 'zoom-out': 'Zoom out', 'slide-up': 'Slide up', 'slide-down': 'Slide down',
+  'slide-left': 'Slide left', 'slide-right': 'Slide right', rise: 'Rise', drop: 'Drop & bounce', spin: 'Spin', blur: 'Blur in', flip: 'Flip',
+};
+export const ANIMS_LOOP = {
+  none: 'None', kenburns: 'Ken Burns (slow zoom in)', 'kenburns-out': 'Slow zoom out', drift: 'Slow drift', pulse: 'Pulse', float: 'Float',
+  wiggle: 'Wiggle', shake: 'Shake', heartbeat: 'Heartbeat', spin: 'Spin',
 };
 
 export const BLENDS = [['source-over', 'Normal'], ['multiply', 'Multiply'], ['screen', 'Screen'], ['overlay', 'Overlay'],
@@ -60,8 +90,28 @@ export const EFFECTS = {
   vignette: { label: 'Vignette', min: 0, max: 100 },
   blur: { label: 'Blur', min: 0, max: 100 },
   mono: { label: 'Black & white', min: 0, max: 100 },
+  glow: { label: 'Glow', min: 0, max: 100, trend: true },
+  rgb: { label: 'RGB split', min: 0, max: 100, trend: true },
+  grain: { label: 'Film grain', min: 0, max: 100, trend: true },
+  leak: { label: 'Light leak', min: 0, max: 100, trend: true },
+  vhs: { label: 'VHS', min: 0, max: 100, trend: true },
+  glitch: { label: 'Glitch', min: 0, max: 100, trend: true },
+  bars: { label: 'Cinema bars', min: 0, max: 100, trend: true, adjustOnly: true },
 };
 export const EFFECT_KEYS = ['exposure', 'contrast', 'saturation', 'temperature', 'tint', 'hue', 'fade', 'vignette', 'blur', 'mono'];
+export const TREND_KEYS = ['glow', 'rgb', 'grain', 'leak', 'vhs', 'glitch', 'bars'];
+
+// One-click trending effects (presets of the settings above).
+export const TREND_PRESETS = {
+  glow: { label: 'Dreamy glow', fx: { glow: 60, exposure: 4 } },
+  rgb: { label: 'RGB split', fx: { rgb: 55 } },
+  vhs: { label: 'VHS tape', fx: { vhs: 70, saturation: 15, fade: 10 } },
+  grain: { label: 'Film grain', fx: { grain: 55, contrast: 8 } },
+  leak: { label: 'Light leak', fx: { leak: 65, temperature: 12 } },
+  glitch: { label: 'Glitch', fx: { glitch: 70, rgb: 30 } },
+  retro: { label: 'Retro film', fx: { grain: 45, leak: 35, fade: 25, temperature: 25, vignette: 40, saturation: -15 } },
+  neon: { label: 'Neon pop', fx: { glow: 45, saturation: 45, contrast: 20 } },
+};
 
 export const LOOKS = {
   none: { label: 'Original', fx: {} },
@@ -82,7 +132,7 @@ export const TEXT_ANIMS = { none: 'None', fade: 'Fade', pop: 'Pop', rise: 'Slide
 
 // Properties that can be keyframed, with their default values.
 export const PROPS = { x: 0, y: 0, scale: 1, rotation: 0, opacity: 1, volume: 1 };
-export const VISUAL = new Set(['video', 'image', 'text', 'shape', 'captions']);
+export const VISUAL = new Set(['video', 'image', 'text', 'shape', 'captions', 'adjust']);
 export const AUDIBLE = new Set(['video', 'audio']);
 
 let seq = 0;
@@ -153,6 +203,8 @@ export function makeClip(type, fields = {}) {
     c.name = 'Shape';
   }
   if (type === 'captions') { c.name = 'Captions'; c.captions = []; c.style = null; }
+  // an adjustment layer: its effects change everything on the tracks under it
+  if (type === 'adjust') { c.name = 'Adjustment layer'; }
   return Object.assign(c, fields, { props: { ...c.props, ...(fields.props || {}) } });
 }
 
@@ -410,7 +462,19 @@ export function nextAdjacent(p, c) {
 // transitions are centred on the cut, so the outgoing clip runs on a little past
 // its end and the incoming one starts a little early (holding the edge frame when
 // the source has nothing more).
+// Cached until the project changes (edits bump p.rev; undo gives a new object):
+// playback asks for every clip on every frame.
+const windowCache = new WeakMap();
 export function transitionsFor(p, c) {
+  let cache = windowCache.get(p);
+  if (!cache || cache.rev !== p.rev) { cache = { rev: p.rev, m: new Map() }; windowCache.set(p, cache); }
+  const key = `${c.id}|${c.start}|${c.dur}|${c.track}`;
+  let w = cache.m.get(key);
+  if (!w) { w = computeTransitions(p, c); cache.m.set(key, w); }
+  return w;
+}
+
+function computeTransitions(p, c) {
   let from = c.start, to = end(c);
   const out = { in: null, out: null };
   if (c.transIn?.type && c.transIn.dur > 0) {
@@ -435,7 +499,7 @@ export function transitionsFor(p, c) {
 // ('in') or outgoing ('out') side.
 export function transitionLook(type, q, role, W, H) {
   const p = EASES.inout.f(Math.min(1, Math.max(0, q)));
-  const L = { alpha: 1, dx: 0, dy: 0, scale: 1, blur: 0, clip: null, color: null, colorAlpha: 0 };
+  const L = { alpha: 1, dx: 0, dy: 0, scale: 1, blur: 0, clip: null, color: null, colorAlpha: 0, rot: 0, circle: null, glitch: 0 };
   const inn = role === 'in';
   const dir = type.split('-')[1];
   const sx = dir === 'left' ? -1 : dir === 'right' ? 1 : 0, sy = dir === 'up' ? -1 : dir === 'down' ? 1 : 0;
@@ -466,7 +530,36 @@ export function transitionLook(type, q, role, W, H) {
       }
       break;
     case 'zoom':
-      if (inn) { L.alpha = p; L.scale = 1.35 - 0.35 * p; } else L.scale = 1 + 0.12 * p;
+      if (type === 'zoom-out') { if (inn) { L.alpha = p; L.scale = 0.7 + 0.3 * p; } else L.scale = 1 - 0.15 * p; }
+      else if (type === 'zoom-blur') {
+        // punch through: the old picture rushes in and blurs, the new one settles out of the blur
+        if (inn) { L.alpha = Math.min(1, p * 2); L.scale = 1.6 - 0.6 * p; L.blur = 36 * (1 - p); } else { L.scale = 1 + 1.2 * p; L.blur = 36 * p; L.alpha = 1 - p * 0.5; }
+      } else if (inn) { L.alpha = p; L.scale = 1.35 - 0.35 * p; } else L.scale = 1 + 0.12 * p;
+      break;
+    case 'whip': {
+      // a fast push with motion blur at its peak
+      const blur = 48 * Math.sin(Math.PI * p);
+      if (inn) { L.dx = -sx * (1 - p) * W; L.blur = blur; } else { L.dx = sx * p * W; L.blur = blur; }
+      break;
+    }
+    case 'flash':
+      // cut at the middle under a white flash
+      L.color = '#FFFFFF';
+      if (inn) { L.alpha = q >= 0.5 ? 1 : 0; L.colorAlpha = Math.max(0, 1 - Math.abs(2 * q - 1) * 1.6); } else L.alpha = q < 0.5 ? 1 : 0;
+      break;
+    case 'spin':
+      if (inn) { L.alpha = p; L.rot = -120 * (1 - p); L.scale = 1.3 - 0.3 * p; L.blur = 18 * (1 - p); } else { L.rot = 120 * p; L.scale = 1 + 0.3 * p; L.blur = 18 * p; }
+      break;
+    case 'glitch':
+      // digital break-up, cutting at the middle
+      L.glitch = Math.sin(Math.PI * q);
+      if (inn) L.alpha = q >= 0.5 ? 1 : 0; else L.alpha = q < 0.5 ? 1 : 0;
+      break;
+    case 'iris':
+      if (inn) L.circle = { r: p * Math.hypot(W, H) / 2 };
+      break;
+    case 'split':
+      if (inn) L.clip = { x: (W * (1 - p)) / 2, y: 0, w: W * p, h: H };
       break;
     case 'blur':
       if (inn) { L.alpha = p; L.blur = 40 * (1 - p); } else L.blur = 40 * p;
@@ -474,6 +567,53 @@ export function transitionLook(type, q, role, W, H) {
     default:
   }
   return L;
+}
+
+// ---------------------------------------------------------------- animations
+
+// A clip's own animation at local time lt: { alpha, dx, dy, scale, sx, rot, blur }.
+export function animMotion(c, lt, W, H) {
+  const m = { alpha: 1, dx: 0, dy: 0, scale: 1, sx: 1, rot: 0, blur: 0 };
+  const a = c.anim;
+  if (!a) return m;
+  const step = (type, q, entering) => {
+    const e = EASES.out.f(Math.min(1, Math.max(0, q)));
+    const u = 1 - e; // how far from rest
+    const sgn = entering ? 1 : -1;
+    switch (type) {
+      case 'fade': m.alpha *= e; break;
+      case 'pop': m.alpha *= Math.min(1, q * 3); m.scale *= q < 0.7 ? 0.5 + 0.62 * (q / 0.7) : 1.12 - 0.12 * ((q - 0.7) / 0.3); break;
+      case 'zoom-in': m.alpha *= e; m.scale *= 1 - 0.35 * u; break;
+      case 'zoom-out': m.alpha *= e; m.scale *= 1 + 0.4 * u; break;
+      case 'slide-up': m.dy += u * H * 0.35 * sgn; break;
+      case 'slide-down': m.dy -= u * H * 0.35 * sgn; break;
+      case 'slide-left': m.dx += u * W * 0.6 * sgn; break;
+      case 'slide-right': m.dx -= u * W * 0.6 * sgn; break;
+      case 'rise': m.alpha *= e; m.dy += u * 80 * sgn; break;
+      case 'drop': { m.alpha *= Math.min(1, q * 4); const b = q < 0.6 ? 1 - (q / 0.6) ** 2 : -0.12 * Math.sin(((q - 0.6) / 0.4) * Math.PI); m.dy -= b * H * 0.3 * sgn; break; }
+      case 'spin': m.alpha *= e; m.rot += u * 180 * sgn; m.scale *= 1 - 0.5 * u; break;
+      case 'blur': m.alpha *= e; m.blur += u * 30; break;
+      case 'flip': m.sx *= Math.max(0.001, Math.abs(Math.cos(u * Math.PI / 2))); m.alpha *= Math.min(1, q * 2); break;
+      default:
+    }
+  };
+  const inDur = Math.min(a.inDur ?? 0.5, c.dur / 2), outDur = Math.min(a.outDur ?? 0.4, c.dur / 2);
+  if (a.in && a.in !== 'none' && lt < inDur) step(a.in, lt / inDur, true);
+  if (a.out && a.out !== 'none' && c.dur - lt < outDur) step(a.out, (c.dur - lt) / outDur, false);
+  const k = (a.loopAmt ?? 50) / 50, T = lt;
+  switch (a.loop) {
+    case 'kenburns': m.scale *= 1 + 0.12 * k * (lt / Math.max(0.1, c.dur)); break;
+    case 'kenburns-out': m.scale *= 1 + 0.12 * k * (1 - lt / Math.max(0.1, c.dur)); break;
+    case 'drift': m.dx += (lt / Math.max(0.1, c.dur) - 0.5) * W * 0.06 * k; m.scale *= 1 + 0.06 * k; break;
+    case 'pulse': m.scale *= 1 + 0.05 * k * Math.sin(T * Math.PI * 2 * 0.8); break;
+    case 'float': m.dy += Math.sin(T * Math.PI * 2 * 0.4) * 14 * k; break;
+    case 'wiggle': m.rot += Math.sin(T * Math.PI * 2 * 1.6) * 4 * k; break;
+    case 'shake': m.dx += (Math.sin(T * 61) + Math.sin(T * 37)) * 5 * k; m.dy += (Math.sin(T * 53) + Math.sin(T * 29)) * 5 * k; break;
+    case 'heartbeat': { const ph = (T * 1.2) % 1; m.scale *= 1 + 0.08 * k * (ph < 0.15 ? Math.sin((ph / 0.15) * Math.PI) : ph > 0.25 && ph < 0.4 ? 0.6 * Math.sin(((ph - 0.25) / 0.15) * Math.PI) : 0); break; }
+    case 'spin': m.rot += T * 45 * k; break;
+    default:
+  }
+  return m;
 }
 
 // ---------------------------------------------------------------- audio
@@ -496,9 +636,9 @@ export function gainAt(p, c, t) {
 
 export const clone = (p) => JSON.parse(JSON.stringify(p));
 
-// Snap points for dragging: zero, the playhead and every clip edge.
+// Snap points for dragging: zero, the playhead, every clip edge and the music's beats.
 export function snapPoints(p, playhead, except = []) {
-  const pts = [0, playhead];
+  const pts = [0, playhead, ...(p.beats?.times || [])];
   for (const c of p.clips) if (!except.includes(c.id)) pts.push(c.start, end(c));
   return pts;
 }

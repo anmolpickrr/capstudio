@@ -1,7 +1,7 @@
 // Editing actions used by the library, the timeline, the menus and the keyboard.
 import { toast } from '../app/ui.js';
 import {
-  addClip, clipById, duplicateClip, end, freeTrack, isFree, LOOKS, makeClip, removeClips, splitClip, trackKind, uid,
+  addClip, addTrack, clipById, duplicateClip, duration, end, freeTrack, isFree, LOOKS, makeClip, removeClips, splitClip, trackKind, TREND_PRESETS, uid,
 } from './model.js';
 import { ed, edit, select, selectedClips } from './store.js';
 
@@ -88,6 +88,39 @@ export function applyLook(look) {
   if (!sel.length) { toast('Select a video or image clip first, then pick a look.'); return; }
   edit((p) => { for (const s of sel) clipById(p, s.id).look = look; });
   toast(`Look: ${LOOKS[look].label}.`, 'ok', 1600);
+}
+
+// An adjustment layer on a track above everything: over the selected clips' span,
+// else from the playhead (or the whole video when it has no `at`).
+export function addAdjustment(fx = {}, name = 'Adjustment layer', whole = false) {
+  const p = ed.project;
+  const sel = selectedClips();
+  let at = ed.playhead, dur = 5;
+  if (whole) { at = 0; dur = Math.max(1, duration(p)); }
+  else if (sel.length) { at = Math.min(...sel.map((c) => c.start)); dur = Math.max(...sel.map(end)) - at; }
+  const c = makeClip('adjust', { name, dur, fx: { ...fx } });
+  edit((x) => {
+    // adjustment layers belong on top: the top track if it's free there, else a new one above it
+    const topT = x.tracks.find((t) => t.type === 'video');
+    const id = topT && !topT.locked && isFree(x, topT.id, at, dur) ? topT.id : addTrack(x, 'video').id;
+    addClip(x, c, { track: id, at });
+  });
+  select([c.id]);
+  return c;
+}
+
+// A trending effect on the selected clips, or (nothing selected) on the whole video.
+export function applyTrend(id) {
+  const preset = TREND_PRESETS[id];
+  const sel = selectedClips().filter((c) => ['video', 'image', 'text', 'shape', 'adjust'].includes(c.type));
+  if (!sel.length) {
+    if (!ed.project.clips.length) { toast('Add something to the timeline first.'); return; }
+    addAdjustment(preset.fx, preset.label, true);
+    toast(`${preset.label} on the whole video (an adjustment layer on the top track).`, 'ok', 2600);
+    return;
+  }
+  edit((p) => { for (const s of sel) { const c = clipById(p, s.id); c.fx = { ...c.fx, ...preset.fx }; } });
+  toast(`${preset.label} on ${sel.length} clip${sel.length > 1 ? 's' : ''}.`, 'ok', 1600);
 }
 
 const unlocked = (p, c) => !p.tracks.find((t) => t.id === c.track)?.locked;

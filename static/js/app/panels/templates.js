@@ -7,7 +7,7 @@ import { buildScene } from '../../engine/scene.js';
 import { CATEGORIES, TEMPLATES } from '../../templates/library.js';
 import { icon } from '../icons.js';
 import { rechunk } from '../session.js';
-import { checkpoint, emit, state } from '../store.js';
+import { checkpoint, emit, set, state } from '../store.js';
 import { h } from '../ui.js';
 
 const PREVIEW_W = 1080, PREVIEW_H = 810;
@@ -152,11 +152,15 @@ export const templatesPanel = {
       }, c.name.replace(' & ', ' & '))));
     grid = h('div', { style: { display: 'grid', gap: '14px' } });
     const current = TEMPLATES.find((t) => t.id === state.templateId);
+    // the style in use, with one click to fine-tune it
+    const tune = h('div', { class: 'tpl-tune' }, h('span', {}, 'Fine-tune:'),
+      [['text', 'Text'], ['effects', 'Effects'], ['motion', 'Motion'], ['position', 'Layout']].map(([tool, label]) =>
+        h('button', { class: 'chip', type: 'button', onclick: () => set({ tool }, 'tool') }, label)));
     root = h('div', { style: { display: 'contents' } },
       h('div', { class: 'panel-head' }, h('h2', {}, 'Caption styles'),
         h('span', { class: 'hint', id: 'tpl-current' }, current ? `Using “${current.name}”` : '')),
       h('div', { class: 'panel-body' },
-        h('div', { class: 'tpl-search', html: icon('search') }, search), chips, grid));
+        h('div', { class: 'tpl-bar' }, h('div', { class: 'tpl-search', html: icon('search') }, search), chips, tune), grid));
     container.replaceChildren(root);
     renderGrid();
   },

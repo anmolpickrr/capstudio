@@ -66,9 +66,32 @@ async function clipFrames(mb, p, c, fps, frames) {
   const n0 = Math.max(0, Math.ceil(w.from * fps - 1e-6)), n1 = Math.min(frames - 1, Math.ceil(w.to * fps - 1e-6) - 1);
   const ts = [];
   for (let n = n0; n <= n1; n++) ts.push(mediaTime(p, c, n / fps));
-  const sink = new mb.CanvasSink(vt, { poolSize: 2 });
-  const it = sink.canvasesAtTimestamps(ts)[Symbol.asyncIterator]();
-  return { n0, n1, it, cur: null };
+  // Decoded frames are drawn as they are (no copy onto a canvas first), except for
+  // rotated phone videos, which the canvas sink turns upright.
+  if (!vt.rotation) {
+    const it = new mb.VideoSampleSink(vt).samplesAtTimestamps(ts)[Symbol.asyncIterator]();
+    return { n0, n1, it, cur: null, sample: null, frame: null, direct: true };
+  }
+  const it = new mb.CanvasSink(vt, { poolSize: 2 }).canvasesAtTimestamps(ts)[Symbol.asyncIterator]();
+  return { n0, n1, it, cur: null, direct: false };
+}
+
+// The next frame of a clip (a frame repeats when the source has fewer frames).
+async function advance(f) {
+  const r = await f.it.next();
+  if (r.done || !r.value) return;
+  if (!f.direct) { f.cur = { img: r.value.canvas, w: r.value.canvas.width, h: r.value.canvas.height }; return; }
+  if (r.value === f.sample) return;
+  f.frame?.close(); f.sample?.close();
+  f.sample = r.value;
+  f.frame = r.value.toVideoFrame();
+  f.cur = { img: f.frame, w: f.frame.displayWidth, h: f.frame.displayHeight };
+}
+
+async function finish(f) {
+  await f.it.return?.().catch(() => {});
+  f.frame?.close(); f.sample?.close();
+  f.frame = f.sample = null;
 }
 
 export async function exportProject(project, { quality = 'high', scale = 1, onProgress, signal }) {
@@ -103,7 +126,6 @@ export async function exportProject(project, { quality = 'high', scale = 1, onPr
   const ext = codec === 'avc' || codec === 'hevc' ? 'mp4' : 'webm';
   const output = new mb.Output({ format, target: new mb.BufferTarget() });
   const out = new OffscreenCanvas(W, H), octx = out.getContext('2d');
-  const full = scale === 1 ? out : new OffscreenCanvas(p.W, p.H), fctx = full.getContext('2d');
   const video = new mb.CanvasSource(out, { codec, bitrate, keyFrameInterval: 2 });
   output.addVideoTrack(video, { frameRate: fps });
   const audio = audioCodec ? new mb.AudioBufferSource({ codec: audioCodec, bitrate: 192e3 }) : null;
@@ -144,25 +166,28 @@ export async function exportProject(project, { quality = 'high', scale = 1, onPr
         open.set(c.id, await clipFrames(mb, p, c, fps, frames));
       }
       current.clear();
+      const due = [];
       for (const [id, f] of open) {
         if (n < f.n0) continue;
-        if (n > f.n1) { await f.it.return?.(); open.delete(id); continue; }
-        const r = await f.it.next();
-        if (!r.done && r.value) f.cur = { img: r.value.canvas, w: r.value.canvas.width, h: r.value.canvas.height };
-        if (f.cur) current.set(id, f.cur);
+        if (n > f.n1) { await finish(f); open.delete(id); continue; }
+        due.push(f);
       }
-      drawFrame(fctx, p, t, src);
-      if (full !== out) { octx.drawImage(full, 0, 0, W, H); }
+      // clips seen together (transitions, layers) are decoded side by side
+      await Promise.all(due.map(advance));
+      for (const [id, f] of open) if (f.cur && n >= f.n0) current.set(id, f.cur);
+      drawFrame(octx, p, t, src, W / p.W);
       await addAudioUntil(t + 1);
       await video.add(t, 1 / fps);
       if (n % 5 === 0) onProgress?.((n + 1) / frames, `Making frame ${n + 1} of ${frames}`, (performance.now() - t0) / 1000);
     }
     await addAudioUntil(frames / fps + 1);
+    for (const f of open.values()) await finish(f);
+    open.clear();
     video.close();
     audio?.close();
     await output.finalize();
   } catch (e) {
-    for (const f of open.values()) await f.it.return?.().catch(() => {});
+    for (const f of open.values()) await finish(f);
     await output.cancel().catch(() => {});
     throw e;
   }
