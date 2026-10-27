@@ -5,6 +5,7 @@ import { api } from '../app/api.js';
 import { icon } from '../app/icons.js';
 import { $, fmtTime, h, toast } from '../app/ui.js';
 import { appSwitch, goTo } from '../app/appswitch.js';
+import { LOGO } from '../app/logo.js';
 import { ensureFonts, fontById, setCatalogue } from '../engine/fonts.js';
 import { addAsset, addShape, addText, copySelection, deleteSelection, duplicateSelection, paste, SHAPES, splitAtPlayhead, TEXT_PRESETS } from './actions.js';
 import { captionsPanel, fromCapstudio, setConfig, syncFromCapstudio } from './captions.js';
@@ -195,7 +196,7 @@ async function startScreen() {
   view.className = 'ed-start';
   view.replaceChildren(
     h('header', { class: 'es-top' },
-      h('a', { class: 'es-brand', href: '/', 'aria-label': 'Capstudio home', html: `${icon('logo')}<b>Capstudio</b>` }),
+      h('a', { class: 'brand es-brand', href: '/', 'aria-label': 'Capstudio home', html: LOGO }),
       appSwitch('editor', { captions: () => goTo('/') }),
       h('span', { class: 'grow' }),
       h('span', { class: 'es-local' }, 'Saved in this browser · works best in Chrome or Edge')),
