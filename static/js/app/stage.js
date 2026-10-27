@@ -12,7 +12,6 @@ import { phoneChrome, PLATFORMS, platformOf, SCREEN, videoBox } from './phone.js
 import { typeBar } from './typebar.js';
 
 const VIEW_KEY = 'capstudio-preview-view';
-const inPanel = () => document.documentElement.classList.contains('in-panel');
 
 export class Stage {
   constructor(root) {
@@ -29,7 +28,7 @@ export class Stage {
     // the phone view: the video on a phone screen, under the app's own buttons
     this.chrome = h('div', { class: 'device-ui', 'aria-hidden': 'true' });
     this.device = h('div', { class: 'device' }, h('div', { class: 'device-screen' }, this.frame, this.chrome));
-    try { this.view = inPanel() ? 'frame' : localStorage.getItem(VIEW_KEY) || 'frame'; } catch { this.view = 'frame'; }
+    try { this.view = localStorage.getItem(VIEW_KEY) || 'frame'; } catch { this.view = 'frame'; }
     this.stage = h('div', { class: 'stage' }, this.device, this.processing);
     this.renderer = new SvgRenderer(this.svg);
     this.transport = this.buildTransport();
@@ -195,11 +194,11 @@ export class Stage {
       onclick: () => { state.safeZone = z.id; this.zoneKey = null; this.refresh(); } }, z.label));
     this.zoneStatus = h('div', { class: 'zone-status', role: 'status', 'aria-live': 'polite' });
     this.zoneSource = h('p', { class: 'zone-source' });
-    this.viewButtons = [['frame', 'frame', 'Video only'], ['phone', 'phone', 'On a phone, with the app’s buttons']].map(([v, ico, tip]) =>
+    this.viewButtons = [['frame', 'frame', 'Video only'], ['phone', 'phone', 'Phone view']].map(([v, ico, tip]) =>
       h('button', { type: 'button', 'data-view': v, 'aria-label': tip, 'data-tip': tip, 'data-tip-pos': 'below', html: `${icon(ico)}<span>${v === 'frame' ? 'Frame' : 'Phone'}</span>`,
         onclick: () => this.setView(v) }));
     return h('div', { class: 'zone-bar' },
-      inPanel() ? null : h('div', { class: 'seg view-seg', role: 'group', 'aria-label': 'Preview view' }, this.viewButtons),
+      h('div', { class: 'seg view-seg', role: 'group', 'aria-label': 'Preview view' }, this.viewButtons),
       h('span', { class: 'zone-title' }, 'Safe zone'),
       h('div', { class: 'zone-chips', role: 'group', 'aria-label': 'Safe zone format' }, this.zoneButtons),
       this.zoneStatus, this.zoneSource);

@@ -653,9 +653,17 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     if (await frame.locator('#to-editor').count()) diffs.push('the editor link shows in the panel');
     if (await frame.locator('.app-switch, .tool-card').count()) diffs.push('the Captions/Editor switch shows in the panel');
     if (await frame.locator('.typebar').isVisible()) diffs.push('the type bar shows in the panel');
+    // the phone view works in the panel too: the whole phone on screen, nothing pushed off
+    await frame.click('.view-seg [data-view="phone"]');
+    await page.waitForTimeout(300);
+    const pv = await frame.evaluate(() => { const d = document.querySelector('.device').getBoundingClientRect(), s = document.querySelector('.device-screen').getBoundingClientRect();
+      return { ratio: s.height / s.width, onScreen: d.top >= 0 && d.bottom <= innerHeight, pageScroll: document.documentElement.scrollHeight - innerHeight,
+        ui: !!document.querySelector('.ph-ui .ph-nav'), action: document.querySelector('#export-btn').getBoundingClientRect().bottom <= innerHeight }; });
+    if (Math.abs(pv.ratio - 852 / 393) > 0.02 || !pv.onScreen || pv.pageScroll > 1 || !pv.ui || !pv.action) diffs.push(`phone view in the panel ${JSON.stringify(pv)}`);
+    await frame.click('.view-seg [data-view="frame"]');
     if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
     if (diffs.length) throw new Error(diffs.join(', '));
-    console.log('✓ Adobe panel layout (380×860): no page scroll, preview, all tabs and "Add to timeline" always on screen; scroll and folds kept per tool; keys 1–7');
+    console.log('✓ Adobe panel layout (380×860): no page scroll, preview, all tabs and "Add to timeline" always on screen; scroll and folds kept per tool; keys 1–7; phone view');
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-panel-layout.png') }).catch(() => {});
     fail('Adobe panel layout', e.message.split('\n')[0]);

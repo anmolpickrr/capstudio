@@ -20,7 +20,7 @@ html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
 .in-panel .editor {
   --gap: 0px;
   grid-template-columns: minmax(0, 1fr);
-  grid-template-rows: 46px var(--pv-h, 40vh) 10px auto auto minmax(0, 1fr);
+  grid-template-rows: 46px var(--pv-h, var(--pv-default, 40vh)) 10px auto auto minmax(0, 1fr);
   grid-template-areas: "bar" "stage" "grip" "tl" "rail" "panel";
   height: 100%; gap: 0; padding: 0;
 }
@@ -137,3 +137,6 @@ html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
   .in-panel .transport select { display: none; }
   .in-panel .zone-status { display: none; }
 }
+
+/* the phone view needs a taller preview to read (until the preview is resized by hand) */
+.in-panel .editor:has(.stage.phone-view) { --pv-default: 58vh; }
