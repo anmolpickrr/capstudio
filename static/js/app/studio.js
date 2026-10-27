@@ -16,6 +16,7 @@ import { deleteCaption, scaleCaption } from './captionops.js';
 import { heroPhone, showcase, stopShowcase } from './showcase.js';
 import { templateById, TEMPLATES } from '../templates/library.js';
 import { $, h, toast } from './ui.js';
+import { goTo } from './appswitch.js';
 
 let view = null;
 let stage = null, timeline = null;
@@ -72,15 +73,24 @@ const SCRIPTS = [
   ['ગુજરાતી', 'gujr'], ['ಕನ್ನಡ', 'knda'], ['മലയാളം', 'mlym'], ['ਪੰਜਾਬੀ', 'guru'], ['Hinglish', 'latin'], ['اردو', 'arab'],
 ];
 
-// Take the captioned video, its captions and style into the editor.
-async function openInEditor() {
+// Into the editor: the captioned video goes along with its captions and style (and
+// comes back to the edit made from it last time); with nothing captioned yet, the
+// editor's start screen.
+export async function openInEditor() {
   const p = state.project;
-  if (!p?.saveId || !state.captions.length) return toast('Caption the video first, then open it in the editor.');
+  if (!p) return goTo('/edit');
+  if (!p.saveId || !state.captions.length) {
+    if (state.phase === 'uploading' || state.phase === 'generating') return toast('Wait for the captions to finish, then open the video in the editor.');
+    return goTo('/edit');
+  }
   const btn = $('#to-editor');
-  btn.disabled = true;
-  if (await saveSessionNow()) location.href = `/edit?capstudio=${encodeURIComponent(p.saveId)}`;
-  else { btn.disabled = false; toast('This browser couldn’t store the video for the editor (storage full?). Open the editor and import the video there.', 'error', 8000); }
+  if (btn) btn.disabled = true;
+  if (await saveSessionNow()) goTo(`/edit?capstudio=${encodeURIComponent(p.saveId)}`);
+  else { if (btn) btn.disabled = false; toast('This browser couldn’t store the video for the editor (storage full?). Open the editor and import the video there.', 'error', 8000); }
 }
+
+// Straight back into a captioned video saved in this browser (from the editor's switch).
+export const openSaved = (id) => resumeProject(id, pickAgain);
 
 // How to install the Premiere Pro and After Effects panel (panel/ in the repository).
 function openPanelHelp() {
@@ -210,9 +220,17 @@ function welcome() {
             h('span', {}, h('span', { class: 't-serif' }, 'move'), ' and speak ', h('span', { class: 't-deva' }, 'हिंदी'))),
           h('p', { class: 'lede' }, 'Upload a video. Capstudio writes the captions, times every word and lets you style them your way. You download it at the same quality you uploaded.'),
           upload,
-          h('a', { class: 'linkish panel-link', href: '/edit' }, 'Need cuts, layers, music and transitions? Open the video editor'),
-          h('button', { class: 'linkish panel-link', type: 'button', onclick: openPanelHelp }, 'Edit in Premiere Pro or After Effects? Get the Capstudio panel'), recentList()),
-        h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(), floats)),
+          h('div', { class: 'more-tools' },
+            h('a', { class: 'tool-card editor', href: '/edit', onclick: (e) => { if (e.metaKey || e.ctrlKey || e.shiftKey) return; e.preventDefault(); goTo('/edit'); } },
+              h('span', { class: 'tool-icon', html: icon('editor') }),
+              h('span', { class: 'tool-text' }, h('b', {}, 'Video editor', h('em', {}, 'New')), h('small', {}, 'Cuts, layers, music, transitions and keyframes')),
+              h('span', { class: 'tool-go', html: icon('arrowRight') })),
+            h('button', { class: 'tool-card', type: 'button', onclick: openPanelHelp },
+              h('span', { class: 'tool-icon adobe' }, 'Pr'),
+              h('span', { class: 'tool-text' }, h('b', {}, 'Adobe panel'), h('small', {}, 'Caption inside Premiere Pro and After Effects')),
+              h('span', { class: 'tool-go', html: icon('arrowRight') }))),
+          recentList()),
+        h('div', { class: 'hero-stage' }, h('div', { class: 'glow' }), heroPhone(showStart), floats)),
       ticker,
       h('section', { class: 'looks' },
         h('div', { class: 'looks-head' },

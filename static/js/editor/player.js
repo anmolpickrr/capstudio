@@ -7,7 +7,7 @@ import { ensureFonts } from '../engine/fonts.js';
 import { fontById } from '../engine/fonts.js';
 import { AUDIBLE, duration, gainAt, prevAdjacent, transitionsFor } from './model.js';
 import { bitmapOf, cachedBitmap, urlOf } from './media.js';
-import { drawFrame, mediaTime } from './render.js';
+import { clearTextCache, drawFrame, mediaTime } from './render.js';
 import { ed, emit, setPlayhead } from './store.js';
 
 const POOL = 16;
@@ -231,7 +231,7 @@ export class Player {
     const key = ids.join();
     if (!ids.length || key === this.fontKey) return;
     this.fontKey = key;
-    ensureFonts(ids.map(fontById)).then((fresh) => { if (fresh) this.invalidate(); });
+    ensureFonts(ids.map(fontById)).then((fresh) => { if (fresh) { clearTextCache(); this.invalidate(); } });
   }
 
   // ---------------------------------------------------------------- frame loop

@@ -6,11 +6,14 @@ import { fontButton } from '../app/fontpicker.js';
 import { icon } from '../app/icons.js';
 import { fmtTime, h } from '../app/ui.js';
 import { TEMPLATES } from '../templates/library.js';
+import { chunkWords } from '../engine/chunk.js';
+import { fitsCaption } from '../engine/layout.js';
 import {
-  allKeyTimes, ANIMS_IN, ANIMS_LOOP, BLENDS, clipById, EASES, EFFECT_KEYS, EFFECTS, keyAt, LOOKS, makeClip, PRESETS, setSpeed, setValue, TEXT_ANIMS, TREND_KEYS,
+  allKeyTimes, ANIMS_IN, ANIMS_LOOP, BLENDS, clipById, EASES, EFFECT_KEYS, EFFECTS, keyAt, LOOKS, makeClip, setSpeed, setValue, TEXT_ANIMS, TREND_KEYS,
   toggleKey, TRANSITIONS, valueAt, addClip, freeTrack,
 } from './model.js';
 import { ed, edit, on, selectedClips, setPlayhead } from './store.js';
+import { evenSize, FORMATS } from './starters.js';
 
 const SWATCHES = ['#FFFFFF', '#111111', '#FFE14D', '#FF9F1C', '#FF4D4D', '#FF4FD8', '#7C5CFF', '#6037D7', '#4F6BFF', '#00E5FF', '#3DFF7A', '#F4EBDD'];
 const TYPE_NAME = { video: 'Video', image: 'Image', audio: 'Audio', text: 'Text', shape: 'Shape', captions: 'Captions', adjust: 'Adjustment' };
@@ -253,12 +256,60 @@ export function mountInspector(root) {
       h('p', { class: 'hint' }, 'A transition in, with a clip right before it on the same track, blends the two at the cut. Otherwise it’s an entrance or exit.'));
   }
 
+  // Captions: their type, colours and place (the same settings as Capstudio's), then
+  // ready-made styles.
   function captionsSection(c) {
     const cur = () => clipById(ed.project, c.id);
+    const st = () => cur()?.style || {};
+    const setS = (patch, key) => change(c.id, (x) => { x.style = { ...x.style, ...patch }; }, key);
+    // fewer or more words per caption: the captions are split again
+    const resplit = (patch) => change(c.id, (x) => {
+      x.style = { ...x.style, ...patch };
+      const words = x.captions.flatMap((k) => k.words);
+      x.captions = chunkWords(words, x.style, (ws) => fitsCaption(ws, x.style, ed.project.W, ed.project.H));
+    }, `${c.id}-split`);
+    const font = fontButton({ value: () => st().font, onPick: (id) => setS({ font: id }) });
+    syncs.push(() => font.paint());
+    const s0 = st();
+    const accent = s0.highlight && s0.highlight !== 'none' ? ['Spoken word', s0.highlight === 'pill' ? 'hlBgColor' : 'hlColor']
+      : s0.emphasis && s0.emphasis !== 'none' ? ['Keyword', 'emphColor'] : null;
     const grid = h('div', { class: 'ins-looks' }, TEMPLATES.slice(0, 36).map((t) => h('button', { type: 'button', class: 'ins-look', 'data-id': t.id,
       onclick: () => change(c.id, (x) => { x.style = { ...t.style }; x.templateId = t.id; }) }, t.name)));
     syncs.push(() => grid.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b.dataset.id === cur()?.templateId))));
-    return section('Captions', h('p', { class: 'hint' }, `${c.captions.length} captions. Pick a style:`), grid);
+    const V = { top: 10, middle: 0, bottom: 14 };
+    return [
+      section('Caption text',
+        h('p', { class: 'hint' }, `${c.captions.length} captions, timed to the words.`),
+        h('div', { class: 'ins-row wide' }, h('label', {}, 'Font'), font),
+        numRow(c, { label: 'Size', min: 24, max: 200, get: () => st().size, set: (v) => setS({ size: v }, `${c.id}-size`), unit: 'px' }),
+        segRow('Case', [['none', 'Aa'], ['upper', 'AA'], ['lower', 'aa'], ['title', 'Title']], () => st().textCase, (v) => setS({ textCase: v })),
+        segRow('Align', [['left', 'Left'], ['center', 'Centre'], ['right', 'Right']], () => (st().align === 'keyword' ? 'center' : st().align), (v) => setS({ align: v })),
+        numRow(c, { label: 'Letter gap', min: -8, max: 20, step: 0.5, digits: 1, get: () => st().letterSpacing || 0, set: (v) => setS({ letterSpacing: v }, `${c.id}-ls`) }),
+        numRow(c, { label: 'Line gap', min: 0.7, max: 1.8, step: 0.05, digits: 2, get: () => st().lineHeight || 1, set: (v) => setS({ lineHeight: v }, `${c.id}-lh`), unit: '×' }),
+        colorRow('Text colour', () => st().color || '#FFFFFF', (v) => setS({ color: v }, `${c.id}-color`)),
+        accent ? colorRow(accent[0], () => st()[accent[1]] || '#FFE14D', (v) => setS({ [accent[1]]: v }, `${c.id}-accent`)) : null,
+        numRow(c, { label: 'Outline', min: 0, max: 20, step: 0.5, digits: 1, get: () => st().outline || 0, set: (v) => setS({ outline: v }, `${c.id}-ol`), unit: 'px' })),
+      section('Caption layout',
+        segRow('Position', [['top', 'Top'], ['middle', 'Middle'], ['bottom', 'Bottom']], () => st().vPos, (v) => setS({ vPos: v, vOffset: V[v] })),
+        numRow(c, { label: 'Up / down', min: -45, max: 48, step: 0.5, digits: 1, get: () => st().vOffset || 0, set: (v) => setS({ vOffset: v }, `${c.id}-vo`), unit: '%' }),
+        numRow(c, { label: 'Width', min: 30, max: 96, get: () => st().width || 82, set: (v) => setS({ width: v }, `${c.id}-w`), unit: '%' }),
+        numRow(c, { label: 'Max words', min: 1, max: 14, get: () => st().maxWords || 6, set: (v) => resplit({ maxWords: v }) }),
+        numRow(c, { label: 'Max lines', min: 1, max: 4, get: () => st().maxLines || 2, set: (v) => resplit({ maxLines: v }) })),
+      section('Caption styles', h('p', { class: 'hint' }, 'A ready-made look (replaces the settings above):'), grid),
+    ];
+  }
+
+  // Any canvas size (even numbers, for the video encoder).
+  function sizeRow(set) {
+    const num = (key, label) => {
+      const i = h('input', { class: 'input ins-size-num', type: 'number', min: 64, max: 7680, step: 2, 'aria-label': label });
+      i.addEventListener('change', () => set({ [key]: evenSize(i.value, ed.project[key]) }));
+      syncs.push(() => { if (document.activeElement !== i) i.value = ed.project[key]; });
+      return i;
+    };
+    return h('div', { class: 'ins-row wide' }, h('label', {}, 'Size'), h('div', { class: 'ins-size' }, num('W', 'Width'), h('span', {}, '×'), num('H', 'Height'),
+      h('button', { class: 'btn ghost xs icon-only', type: 'button', 'aria-label': 'Swap width and height', 'data-tip': 'Swap width and height', html: icon('ripple'),
+        onclick: () => set({ W: ed.project.H, H: ed.project.W }) })));
   }
 
   function projectSection() {
@@ -270,19 +321,16 @@ export function mountInspector(root) {
     return [
       section('Project',
         h('div', { class: 'ins-row wide' }, h('label', {}, 'Name'), name),
-        h('div', { class: 'ins-presets' }, PRESETS.map((pr) => {
-          const b = h('button', { type: 'button', class: 'ins-preset', onclick: () => set({ W: pr.W, H: pr.H }) },
-            h('i', { style: { aspectRatio: `${pr.W} / ${pr.H}` } }), h('b', {}, pr.label), h('small', {}, `${pr.W} × ${pr.H}`));
+        h('div', { class: 'ins-presets' }, FORMATS.filter((f) => f.id !== 'custom').map((pr) => {
+          const b = h('button', { type: 'button', class: 'ins-preset', 'data-tip': pr.note, onclick: () => set({ W: pr.W, H: pr.H }) },
+            h('i', { style: { aspectRatio: `${pr.W} / ${pr.H}` } }), h('b', {}, `${pr.label} ${pr.ratio}`), h('small', {}, `${pr.W} × ${pr.H}`));
           syncs.push(() => b.setAttribute('aria-pressed', String(ed.project.W === pr.W && ed.project.H === pr.H)));
           return b;
         })),
+        sizeRow(set),
         segRow('Frame rate', [['24', '24'], ['25', '25'], ['30', '30'], ['60', '60']], () => String(ed.project.fps), (v) => set({ fps: Number(v) })),
         colorRow('Background', () => ed.project.bg, (v) => set({ bg: v }, 'bg'))),
-      section('Shortcuts', h('dl', { class: 'ins-keys' },
-        ...[['Space', 'Play / pause'], ['S', 'Split at the playhead'], ['Del', 'Delete'], ['Shift+Del', 'Delete and close the gap'], ['V / C', 'Select / razor tool'],
-          ['← →', 'One frame (Shift: one second)'], ['Ctrl+D', 'Duplicate'], ['Ctrl+C / V', 'Copy / paste at the playhead'], ['Ctrl+Z', 'Undo (Ctrl+Shift+Z redo)'],
-          ['Ctrl+wheel', 'Zoom the timeline'], ['Double-click a gap', 'Close the gap']].flatMap(([k, d]) => [h('dt', {}, k), h('dd', {}, d)]))),
-      h('p', { class: 'hint ins-note' }, `${p.clips.length} clips · ${fmtTime(Math.max(0, ...p.clips.map((c) => c.start + c.dur)))}`),
+      h('p', { class: 'hint ins-note' }, `${p.clips.length} clips · ${fmtTime(Math.max(0, ...p.clips.map((c) => c.start + c.dur)))} · Press ? for keyboard shortcuts`),
     ];
   }
 
@@ -331,7 +379,7 @@ export function mountInspector(root) {
     const sel = selectedClips();
     if (sel.length !== 1) return `${sel.length}|${sel.map((c) => c.id).join()}|${ed.project?.W}x${ed.project?.H}`;
     const c = sel[0];
-    return [c.id, c.type, c.text?.bg, c.text?.outline ? 1 : 0, c.shape?.kind, !!c.transIn, !!c.transOut, c.audio?.detached, c.captions?.length,
+    return [c.id, c.type, c.text?.bg, c.text?.outline ? 1 : 0, c.style?.highlight, c.style?.emphasis, c.shape?.kind, !!c.transIn, !!c.transOut, c.audio?.detached, c.captions?.length,
       c.anim?.in, c.anim?.out, c.anim?.loop].join('|');
   };
   // values are refreshed at most once a frame, and a few times a second while playing

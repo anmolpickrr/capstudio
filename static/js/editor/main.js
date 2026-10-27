@@ -4,13 +4,16 @@
 import { api } from '../app/api.js';
 import { icon } from '../app/icons.js';
 import { $, fmtTime, h, toast } from '../app/ui.js';
-import { setCatalogue } from '../engine/fonts.js';
+import { appSwitch, goTo } from '../app/appswitch.js';
+import { ensureFonts, fontById, setCatalogue } from '../engine/fonts.js';
 import { addAsset, addShape, addText, copySelection, deleteSelection, duplicateSelection, paste, SHAPES, splitAtPlayhead, TEXT_PRESETS } from './actions.js';
-import { captionsPanel, fromCapstudio, setConfig } from './captions.js';
+import { captionsPanel, fromCapstudio, setConfig, syncFromCapstudio } from './captions.js';
 import { canExport, exportProject } from './export.js';
 import { mountInspector } from './inspector.js';
 import { mountLibrary } from './library.js';
-import { clipById, duration, end, newProject, PRESETS } from './model.js';
+import { clipById, duration, end, newProject } from './model.js';
+import { drawFrame, clearTextCache } from './render.js';
+import { BACKGROUNDS, evenSize, FORMATS, FPS, starterById, STARTERS } from './starters.js';
 import { Player } from './player.js';
 import { canRedo, canUndo, deleteProject, ed, edit, emit, listProjects, loadProject, on, openProject, redo, saveNow, select, setPlayhead, setThumbSource, undo } from './store.js';
 import { mountTimeline } from './timeline.js';
@@ -34,44 +37,249 @@ async function boot() {
 
 // ---------------------------------------------------------------- start screen
 
-async function startScreen() {
-  history.replaceState(null, '', '/edit');
-  const recent = await listProjects();
-  const presets = h('div', { class: 'es-presets' }, PRESETS.map((pr) => h('button', { class: 'es-preset', type: 'button', onclick: () => create(pr.id) },
-    h('i', { style: { aspectRatio: `${pr.W} / ${pr.H}` } }), h('b', {}, pr.label), h('small', {}, pr.note))));
-  const list = h('div', { class: 'es-recent' }, recent.map((r) => h('div', { class: 'es-item' },
-    h('button', { class: 'es-open', type: 'button', onclick: () => openWorkspace(r) },
-      r.thumb ? h('img', { src: r.thumb, alt: '' }) : h('span', { class: 'es-ph', html: icon('editor') }),
-      h('span', {}, h('b', {}, r.name), h('small', {}, `${r.W}×${r.H} · ${fmtTime(Math.max(0, ...r.clips.map(end)), 0)} · ${new Date(r.savedAt).toLocaleString()}`))),
-    h('button', { class: 'btn ghost sm icon-only', type: 'button', 'aria-label': `Delete ${r.name}`, html: icon('trash'), onclick: async () => {
-      if (!confirm(`Delete “${r.name}” and its media from this browser?`)) return;
-      await deleteProject(r.id); startScreen();
-    } }))));
-  view.className = 'ed-start';
-  view.replaceChildren(h('div', { class: 'es-card' },
-    h('div', { class: 'es-head' },
-      h('a', { class: 'btn ghost sm', href: '/', html: `${icon('arrowLeft')}<span>Capstudio</span>` }),
-      h('span', { class: 'kicker' }, 'Capstudio Editor')),
-    h('h1', {}, 'Edit a video'),
-    h('p', { class: 'es-lead' }, 'Cut, layer, animate with keyframes, add transitions, colour, text, music and captions, then export in your browser. Pick a shape to start:'),
-    presets,
-    recent.length ? h('h2', {}, 'Recent projects') : null, recent.length ? list : null,
-    h('p', { class: 'hint' }, 'Projects and their media are saved in this browser as you work. Works best in Chrome or Edge on a computer.')));
+// What the next project starts as: the canvas (format or custom size), frame rate,
+// background, and a starter layout. Remembered for next time.
+const SETUP_KEY = 'capstudio-editor-setup';
+const setup = (() => {
+  const d = { format: '9x16', W: 1080, H: 1920, fps: 30, bg: null, starter: 'blank' };
+  try { return { ...d, ...JSON.parse(localStorage.getItem(SETUP_KEY) || '{}') }; } catch { return d; }
+})();
+const keepSetup = () => { try { localStorage.setItem(SETUP_KEY, JSON.stringify(setup)); } catch { /* private mode */ } };
+const canvasSize = () => {
+  const f = FORMATS.find((x) => x.id === setup.format) || FORMATS[0];
+  return f.id === 'custom' ? { W: evenSize(setup.W, 1080), H: evenSize(setup.H, 1080) } : { W: f.W, H: f.H };
+};
+const bgOf = () => setup.bg || starterById(setup.starter).bg || '#000000';
+
+// The project the screen would create (also what the previews draw).
+function draftProject(name = 'Untitled video') {
+  const { W, H } = canvasSize();
+  const p = newProject({ name, W, H, fps: setup.fps });
+  p.bg = bgOf();
+  starterById(setup.starter).build(p);
+  return p;
 }
 
-function create(preset) {
-  const p = newProject({ preset });
+let previews = [];
+function stopPreviews() { for (const pv of previews) pv.stop(); previews = []; }
+
+// A starter's first seconds drawn by the editor's own compositor; it plays on hover.
+function starterPreview(starter) {
+  const cv = h('canvas', { class: 'es-tpl-canvas' });
+  const ctx = cv.getContext('2d');
+  let raf = 0, p = null, t0 = 0;
+  const still = 1.4;
+  const draw = (t) => {
+    if (!p) return;
+    const k = cv.width / p.W;
+    drawFrame(ctx, p, t, {}, k);
+  };
+  const pv = {
+    refresh() {
+      const { W, H } = canvasSize();
+      p = newProject({ W, H });
+      p.bg = setup.bg || starter.bg || '#000000';
+      starter.build(p);
+      // fit the card's stage (about 140 × 180), drawn at twice that for sharpness
+      const k = Math.min(140 / W, 180 / H);
+      cv.style.width = `${Math.round(W * k)}px`; cv.style.height = `${Math.round(H * k)}px`;
+      cv.width = Math.max(2, Math.round(W * k * 2)); cv.height = Math.max(2, Math.round(H * k * 2));
+      const fonts = p.clips.filter((c) => c.type === 'text').map((c) => fontById(c.text.font));
+      // draw once the fonts are in (text drawn with a stand-in font would be kept)
+      ensureFonts(fonts).then((fresh) => { if (fresh) clearTextCache(); draw(still); });
+    },
+    play() {
+      cancelAnimationFrame(raf);
+      t0 = performance.now();
+      const loop = (now) => { draw(((now - t0) / 1000) % 4); raf = requestAnimationFrame(loop); };
+      raf = requestAnimationFrame(loop);
+    },
+    pause() { cancelAnimationFrame(raf); draw(still); },
+    stop() { cancelAnimationFrame(raf); },
+  };
+  pv.refresh();
+  previews.push(pv);
+  return { cv, pv };
+}
+
+async function startScreen() {
+  history.replaceState(null, '', '/edit');
+  stopPreviews();
+  const recent = await listProjects();
+  const paintAll = [];
+  const repaint = () => { keepSetup(); paintAll.forEach((f) => f()); };
+
+  // canvas formats
+  const formatBtn = (f) => {
+    const ar = f.id === 'custom' ? null : `${f.W} / ${f.H}`;
+    const b = h('button', { type: 'button', class: 'es-format', role: 'radio', 'data-id': f.id,
+      onclick: () => { setup.format = f.id; repaint(); if (f.id === 'custom') customW.focus(); } },
+    h('span', { class: 'es-format-shape' }, h('i', { style: ar ? { aspectRatio: ar, [f.W >= f.H ? 'width' : 'height']: '30px' } : {}, class: f.id === 'custom' ? 'custom' : null })),
+    h('span', { class: 'es-format-text' },
+      h('b', {}, f.label, f.ratio ? h('em', {}, f.ratio) : null),
+      h('small', {}, f.note)));
+    paintAll.push(() => b.setAttribute('aria-checked', String(setup.format === f.id)));
+    return b;
+  };
+  const groups = ['Social', 'Video', 'Custom'].map((g) => h('div', { class: 'es-format-group' },
+    h('span', { class: 'es-label' }, g), h('div', { class: 'es-formats', role: 'radiogroup', 'aria-label': `${g} formats` }, FORMATS.filter((f) => f.group === g).map(formatBtn))));
+
+  const num = (key, label) => {
+    const i = h('input', { class: 'input es-num', type: 'number', min: 64, max: 7680, step: 2, inputmode: 'numeric', 'aria-label': label });
+    i.addEventListener('focus', () => { if (setup.format !== 'custom') { const { W, H } = canvasSize(); setup.W = W; setup.H = H; setup.format = 'custom'; repaint(); } });
+    i.addEventListener('change', () => { setup[key] = evenSize(i.value, setup[key]); repaint(); });
+    paintAll.push(() => { if (document.activeElement !== i) i.value = canvasSize()[key]; });
+    return i;
+  };
+  const customW = num('W', 'Width in pixels'), customH = num('H', 'Height in pixels');
+  const swap = h('button', { class: 'btn ghost sm icon-only', type: 'button', 'aria-label': 'Swap width and height', 'data-tip': 'Swap width and height', html: icon('ripple'),
+    onclick: () => { const { W, H } = canvasSize(); Object.assign(setup, { format: 'custom', W: H, H: W }); repaint(); } });
+  const sizeRow = h('div', { class: 'es-size' }, customW, h('span', {}, '×'), customH, h('small', {}, 'px'), swap);
+
+  const fps = h('div', { class: 'seg es-fps', role: 'group', 'aria-label': 'Frame rate' }, FPS.map((v) => {
+    const b = h('button', { type: 'button', onclick: () => { setup.fps = v; repaint(); } }, String(v));
+    paintAll.push(() => b.setAttribute('aria-pressed', String(setup.fps === v)));
+    return b;
+  }));
+  const bgs = h('div', { class: 'es-swatches', role: 'group', 'aria-label': 'Background colour' },
+    BACKGROUNDS.map((c) => {
+      const b = h('button', { type: 'button', class: 'es-swatch', style: { background: c }, 'aria-label': c, onclick: () => { setup.bg = c; repaint(); } });
+      paintAll.push(() => b.setAttribute('aria-pressed', String(bgOf().toLowerCase() === c.toLowerCase())));
+      return b;
+    }),
+    (() => {
+      const i = h('input', { type: 'color', class: 'es-swatch custom', 'aria-label': 'Any colour' });
+      i.addEventListener('input', () => { setup.bg = i.value; repaint(); });
+      paintAll.push(() => { i.value = bgOf().length === 7 ? bgOf() : '#000000'; });
+      return i;
+    })());
+
+  // starter layouts
+  const tpls = h('div', { class: 'es-tpls', role: 'radiogroup', 'aria-label': 'Start with' }, STARTERS.map((st) => {
+    const { cv, pv } = starterPreview(st);
+    const b = h('button', { type: 'button', class: 'es-tpl', role: 'radio', 'data-id': st.id,
+      onclick: () => { setup.starter = st.id; setup.bg = null; repaint(); },
+      ondblclick: () => { setup.starter = st.id; setup.bg = null; keepSetup(); create(); },
+      onmouseenter: () => pv.play(), onmouseleave: () => pv.pause(), onfocus: () => pv.play(), onblur: () => pv.pause() },
+    h('span', { class: 'es-tpl-stage' }, cv, st.id === 'blank' ? h('span', { class: 'es-tpl-blank', html: icon('plus') }) : null),
+    h('span', { class: 'es-tpl-text' }, h('b', {}, st.name), h('small', {}, st.note)));
+    paintAll.push(() => { b.setAttribute('aria-checked', String(setup.starter === st.id)); pv.refresh(); });
+    return b;
+  }));
+
+  // summary and the main action
+  const summary = h('span', { class: 'es-summary' });
+  paintAll.push(() => {
+    const f = FORMATS.find((x) => x.id === setup.format) || FORMATS[0];
+    const { W, H } = canvasSize();
+    summary.replaceChildren(h('b', {}, f.id === 'custom' ? 'Custom' : `${f.label} ${f.ratio}`), ` · ${W} × ${H} · ${setup.fps} fps · ${starterById(setup.starter).name}`);
+  });
+  const createBtn = h('button', { class: 'btn brand lg', type: 'button', html: `<span>Create project</span>${icon('arrowRight')}`, onclick: () => create() });
+
+  const picker = h('input', { type: 'file', accept: 'video/*,image/*,audio/*,.mov,.mkv', multiple: true, hidden: true });
+  picker.addEventListener('change', () => { const files = [...picker.files]; picker.value = ''; if (files.length) fromFiles(files); });
+
+  const recentGrid = h('div', { class: 'es-recent' }, recent.map((r) => {
+    const dur = Math.max(0, ...r.clips.map(end));
+    return h('div', { class: 'es-proj' },
+      h('button', { class: 'es-proj-open', type: 'button', onclick: () => openWorkspace(r), 'aria-label': `Open ${r.name}` },
+        h('span', { class: 'es-proj-thumb', style: { aspectRatio: `${r.W} / ${r.H}` } },
+          r.thumb ? h('img', { src: r.thumb, alt: '' }) : h('span', { html: icon('editor') })),
+        h('span', { class: 'es-proj-text' }, h('b', {}, r.name), h('small', {}, `${r.W}×${r.H} · ${fmtTime(dur, 0)} · ${ago(r.savedAt)}`))),
+      h('button', { class: 'btn ghost sm icon-only es-proj-del', type: 'button', 'aria-label': `Delete ${r.name}`, 'data-tip': 'Delete', html: icon('trash'), onclick: async () => {
+        if (!confirm(`Delete “${r.name}” and its media from this browser?`)) return;
+        await deleteProject(r.id); startScreen();
+      } }));
+  }));
+
+  view.className = 'ed-start';
+  view.replaceChildren(
+    h('header', { class: 'es-top' },
+      h('a', { class: 'es-brand', href: '/', 'aria-label': 'Capstudio home', html: `${icon('logo')}<b>Capstudio</b>` }),
+      appSwitch('editor', { captions: () => goTo('/') }),
+      h('span', { class: 'grow' }),
+      h('span', { class: 'es-local' }, 'Saved in this browser · works best in Chrome or Edge')),
+    h('div', { class: 'es-wrap' },
+      h('section', { class: 'es-hero' },
+        h('div', {},
+          h('span', { class: 'kicker' }, 'Video editor'),
+          h('h1', {}, 'Start a new video'),
+          h('p', { class: 'es-lead' }, 'Pick a canvas and a starting layout, or drop in a video and the canvas matches it. Cut, layer, animate, add music, transitions and captions, then export right here.')),
+        h('div', { class: 'es-quick' },
+          h('button', { class: 'es-quick-card primary', type: 'button', onclick: () => picker.click() },
+            h('span', { class: 'es-quick-icon', html: icon('upload') }),
+            h('span', {}, h('b', {}, 'Import a video'), h('small', {}, 'Canvas, size and frame rate match it'))),
+          h('a', { class: 'es-quick-card', href: '/', onclick: (e) => { e.preventDefault(); goTo('/'); } },
+            h('span', { class: 'es-quick-icon', html: icon('captions') }),
+            h('span', {}, h('b', {}, 'Caption a video first'), h('small', {}, 'Then bring it here with its captions'))),
+          picker)),
+      h('div', { class: 'es-grid' },
+        h('section', { class: 'es-panel es-setup', 'aria-label': 'Canvas' },
+          h('h2', {}, h('i', {}, '1'), 'Canvas'),
+          ...groups,
+          sizeRow,
+          h('div', { class: 'es-row' }, h('span', { class: 'es-label' }, 'Frame rate'), fps),
+          h('div', { class: 'es-row col' }, h('span', { class: 'es-label' }, 'Background'), bgs)),
+        h('section', { class: 'es-panel es-start-with', 'aria-label': 'Start with' },
+          h('h2', {}, h('i', {}, '2'), 'Start with', h('small', {}, 'Hover to play · double-click to start')),
+          tpls,
+          h('div', { class: 'es-go' }, summary, createBtn))),
+      recent.length ? h('section', { class: 'es-recent-wrap' }, h('h2', {}, 'Recent projects', h('small', {}, `${recent.length}`)), recentGrid) : null));
+  repaint();
+  document.fonts?.ready.then(() => paintAll.forEach((f) => f()));
+}
+
+const ago = (t) => {
+  const m = Math.round((Date.now() - (t || 0)) / 60000);
+  if (m < 1) return 'just now';
+  if (m < 60) return `${m} min ago`;
+  const hrs = Math.round(m / 60);
+  return hrs < 24 ? `${hrs} h ago` : new Date(t).toLocaleDateString();
+};
+
+function create() {
+  stopPreviews();
+  const p = draftProject();
   openWorkspace(p);
   saveNow();
 }
 
+// "Import a video": the canvas takes the first video's size and frame rate.
+async function fromFiles(files) {
+  stopPreviews();
+  const p = newProject({ preset: '9x16', name: files[0].name.replace(/\.[^.]*$/, '') });
+  openWorkspace(p);
+  const added = await library.importInto(files);
+  const v = added?.find((a) => a.kind === 'video' && a.width) || added?.find((a) => a.kind === 'image' && a.width);
+  if (v) edit((x) => { x.W = Math.round(v.width / 2) * 2; x.H = Math.round(v.height / 2) * 2; if (v.fps) x.fps = Math.round(v.fps); });
+  let at = 0;
+  for (const a of added || []) { if (a.kind === 'audio') addAsset(a, 0); else { const c = addAsset(a, at); at = end(c); } }
+  select([]);
+  requestAnimationFrame(() => window.__editorTimeline?.fit());
+  saveNow();
+}
+
+// From Capstudio: reopen the edit made from this captioned video (its captions
+// brought up to date), or start one with the video and captions on the timeline.
 async function fromCapstudioProject(id) {
+  const earlier = (await listProjects()).find((r) => r.source === id);
+  if (earlier) {
+    openWorkspace(earlier);
+    try {
+      if (await syncFromCapstudio(id)) toast('Your edit is open, with the latest captions from Capstudio.', 'ok', 4000);
+      else toast('Your edit of this video is open.', 'ok', 2500);
+    } catch (e) { toast(e.message, 'error', 7000); }
+    return;
+  }
   const p = newProject({ preset: '9x16', name: 'From Capstudio' });
   openWorkspace(p);
   try {
     const r = await fromCapstudio(id);
     const a = r.videoClip && ed.project.assets[r.videoClip.asset];
     if (a?.width) edit((x) => { x.W = Math.round(a.width / 2) * 2; x.H = Math.round(a.height / 2) * 2; x.fps = Math.round(a.fps) || 30; x.name = a.name.replace(/\.[^.]*$/, ''); });
+    select([]);
+    requestAnimationFrame(() => window.__editorTimeline?.fit());
+    saveNow();
     toast('Your video and its captions are on the timeline.', 'ok', 4000);
   } catch (e) { toast(e.message, 'error', 7000); }
 }
@@ -94,13 +302,14 @@ function openWorkspace(p) {
   const undoBtn = h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Undo (Ctrl+Z)', 'data-tip': 'Undo (Ctrl+Z)', html: icon('undo'), onclick: undo });
   const redoBtn = h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Redo (Ctrl+Shift+Z)', 'data-tip': 'Redo (Ctrl+Shift+Z)', html: icon('redo'), onclick: redo });
   const top = h('header', { class: 'ed-top' },
-    h('a', { class: 'btn ghost sm', href: '/edit', 'data-tip': 'All projects', html: `${icon('arrowLeft')}<span>Projects</span>`,
+    h('a', { class: 'btn ghost sm icon-only', href: '/edit', 'aria-label': 'All projects', 'data-tip': 'All projects', 'data-tip-pos': 'below', html: icon('arrowLeft'),
       onclick: async (e) => { e.preventDefault(); await saveNow(); player?.destroy(); player = null; startScreen(); } }),
-    h('span', { class: 'ed-logo', html: `${icon('editor')}<b>Editor</b>` }),
-    name, saved,
+    appSwitch('editor', { captions: toCaptions }),
+    h('span', { class: 'ed-sep' }),
+    h('div', { class: 'ed-title' }, name, saved),
     h('span', { class: 'grow' }),
     undoBtn, redoBtn,
-    h('a', { class: 'btn ghost sm', href: '/', html: `${icon('captions')}<span>Capstudio</span>`, 'data-tip': 'Caption a single video' }),
+    h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Keyboard shortcuts (?)', 'data-tip': 'Keyboard shortcuts (?)', 'data-tip-pos': 'below', html: icon('keyboard'), onclick: openShortcuts }),
     h('button', { class: 'btn brand', type: 'button', html: `${icon('export')}<span>Export</span>`, onclick: openExport }));
   view.replaceChildren(top, h('div', { class: 'ed-main' }, libEl, viewerEl, insEl), resizer, tlEl);
 
@@ -110,7 +319,7 @@ function openWorkspace(p) {
   library = mountLibrary(libEl, { captionsPanel });
   mountViewer(viewerEl, player);
   mountInspector(insEl);
-  const tl = mountTimeline(tlEl, {
+  const tl = window.__editorTimeline = mountTimeline(tlEl, {
     onDropAsset: dropped,
     onSplit: splitAtPlayhead,
     onDelete: (ripple) => deleteSelection(ripple || ed.ripple),
@@ -136,6 +345,32 @@ function openWorkspace(p) {
   paintTop();
   requestAnimationFrame(() => { if (ed.project.clips.length) tl.fit(); });
   window.__editor = { ed, edit, player, select, setPlayhead, clipById };
+}
+
+// Back to Captions: to the captioned video this edit came from, else the upload page.
+async function toCaptions() {
+  await saveNow();
+  goTo(ed.project?.source ? `/?open=${encodeURIComponent(ed.project.source)}` : '/');
+}
+
+const SHORTCUTS = [
+  ['Playback', [['Space', 'Play / pause'], ['J / K / L', 'Back a second / pause / play'], ['← →', 'One frame (Shift: one second)'], ['Home / End', 'Start / end']]],
+  ['Editing', [['S', 'Split at the playhead'], ['Del', 'Delete'], ['Shift+Del', 'Delete and close the gap'], ['Ctrl+D', 'Duplicate'],
+    ['Ctrl+C / V', 'Copy / paste at the playhead'], ['Ctrl+A', 'Select everything'], ['Ctrl+Z', 'Undo (Ctrl+Shift+Z: redo)']]],
+  ['Timeline', [['V / C', 'Select / razor tool'], ['+ / −', 'Zoom in / out'], ['Ctrl+wheel', 'Zoom at the pointer'], ['Double-click a gap', 'Close the gap'], ['Right-click a clip', 'More actions']]],
+];
+
+function openShortcuts() {
+  const dlg = $('#ed-dialog');
+  if (dlg.open) { dlg.close(); return; }
+  dlg.replaceChildren(h('div', { class: 'modal ed-keys' },
+    h('div', { class: 'modal-head' },
+      h('div', {}, h('h2', {}, 'Keyboard shortcuts'), h('p', {}, 'On a Mac, use ⌘ for Ctrl.')),
+      h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
+    h('div', { class: 'modal-body ed-keys-grid' }, SHORTCUTS.map(([title, rows]) => h('section', {},
+      h('h3', {}, title),
+      h('dl', {}, rows.flatMap(([k, d]) => [h('dt', {}, k.split(' / ').map((x, i) => [i ? ' / ' : null, h('kbd', {}, x)]).flat()), h('dd', {}, d)])))))));
+  dlg.showModal();
 }
 
 function thumbOf(canvas) {
@@ -202,6 +437,7 @@ addEventListener('keydown', (e) => {
   else if (k === 'v') { ed.tool = 'select'; emit('tool'); }
   else if (k === 'c') { ed.tool = 'razor'; emit('tool'); }
   else if (k === 'escape') { select([]); ed.tool = 'select'; emit('tool'); }
+  else if (e.key === '?') { openShortcuts(); done(); }
   else if (k === '=' || k === '+') { ed.zoom = Math.min(600, ed.zoom * 1.4); emit('zoom'); }
   else if (k === '-') { ed.zoom = Math.max(4, ed.zoom / 1.4); emit('zoom'); }
   else if (k === 'j') setPlayhead(ed.playhead - 1);

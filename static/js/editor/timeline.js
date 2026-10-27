@@ -12,14 +12,18 @@ import { thumbnails, waveform } from './media.js';
 import { openMenu } from './menu.js';
 import { ed, edit, emit, on, select, setPlayhead } from './store.js';
 
-const HEAD_W = 136, RULER_H = 28, LANE_H = { video: 62, audio: 50 }, EDGE = 7, SNAP_PX = 9;
+// PAD: a gutter before time 0, so the start (and the playhead there) isn't flush against the track names
+const HEAD_W = 136, RULER_H = 28, PAD = 14, LANE_H = { video: 62, audio: 50 }, EDGE = 7, SNAP_PX = 9;
 
 export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
   const heads = h('div', { class: 'et-heads' });
   const ruler = h('canvas', { class: 'et-ruler', height: RULER_H });
   const lanes = h('div', { class: 'et-lanes' });
   const playhead = h('div', { class: 'et-playhead' }, h('span', { class: 'et-playhead-cap' }));
-  const inner = h('div', { class: 'et-inner' }, ruler, lanes, playhead);
+  const empty = h('div', { class: 'et-empty' }, h('span', { html: icon('film') }),
+    h('b', {}, 'Drop videos, photos or music here'), h('small', {}, 'or pick them from Media on the left, then drag them onto a track'));
+  const inner = h('div', { class: 'et-inner' }, ruler, lanes, playhead, empty);
+  inner.style.setProperty('--pad', `${PAD}px`);
   const marquee = h('div', { class: 'et-marquee' });
   const scroll = h('div', { class: 'et-scroll' }, inner);
   const zoomRange = h('input', { type: 'range', class: 'range et-zoom', min: 0, max: 100, step: 1, 'aria-label': 'Timeline zoom' });
@@ -97,17 +101,17 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
     c.font = '11px ui-monospace, Menlo, monospace';
     c.beginPath();
     for (let t = 0; t * ed.zoom < w; t += minor) {
-      const x = Math.round(t * ed.zoom) + 0.5;
+      const x = Math.round(PAD + t * ed.zoom) + 0.5;
       const isMajor = Math.abs(t / major - Math.round(t / major)) < 1e-6;
       c.moveTo(x, isMajor ? 10 : 19); c.lineTo(x, RULER_H);
-      if (isMajor) c.fillText(fmtRuler(t, major), x + 4, 12);
+      if (isMajor) c.fillText(fmtRuler(t, major), x + (t === 0 ? 10 : 5), 12);
     }
     c.stroke();
     // the music's beats, when found
     const beats = ed.project?.beats?.times;
     if (beats) {
       c.fillStyle = '#ffd166';
-      for (const b of beats) { const x = b * ed.zoom; if (x > w) break; c.beginPath(); c.moveTo(x - 3, RULER_H); c.lineTo(x + 3, RULER_H); c.lineTo(x, RULER_H - 5); c.fill(); }
+      for (const b of beats) { const x = PAD + b * ed.zoom; if (x > w) break; c.beginPath(); c.moveTo(x - 3, RULER_H); c.lineTo(x + 3, RULER_H); c.lineTo(x, RULER_H - 5); c.fill(); }
     }
   }
 
@@ -223,7 +227,8 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
     const p = ed.project;
     if (!p) return;
     const total = Math.max(duration(p) + 20, scroll.clientWidth / ed.zoom);
-    inner.style.width = `${total * ed.zoom}px`;
+    inner.style.width = `${PAD + total * ed.zoom}px`;
+    empty.hidden = p.clips.length > 0;
     heads.replaceChildren(h('div', { class: 'et-heads-top', style: { height: `${RULER_H}px` } }), ...p.tracks.map(headFor));
     const rows = p.tracks.map(laneFor);
     if (rows.some((r, i) => lanes.children[i] !== r) || lanes.children.length !== rows.length) lanes.replaceChildren(...rows);
@@ -255,7 +260,7 @@ export function mountTimeline(root, { onDropAsset, onSplit, onDelete }) {
 
   function placePlayhead(follow = false) {
     const x = ed.playhead * ed.zoom;
-    playhead.style.transform = `translateX(${x}px)`;
+    playhead.style.transform = `translateX(${PAD + x}px)`;
     time.textContent = `${fmtTime(ed.playhead)} / ${fmtTime(duration(ed.project))}`;
     if (follow && (x < scroll.scrollLeft || x > scroll.scrollLeft + scroll.clientWidth - 40)) scroll.scrollLeft = x - 60;
   }

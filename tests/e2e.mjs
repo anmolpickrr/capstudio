@@ -344,7 +344,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   try {
     await page.addInitScript(() => { window.__exportCodecs = ['vp9']; window.__exportAudioCodecs = ['opus']; });
     await page.goto(`${BASE}/edit`);
-    await page.click('.es-preset >> nth=0');
+    await page.click('.es-go .btn');
     await page.setInputFiles('.ed-lib input[type=file]', [MEDIA + 'vert_vp9.mp4', MEDIA + 'land_vp9.mp4', music]);
     await page.waitForFunction(() => document.querySelectorAll('.lib-card').length === 3, null, { timeout: 30000 });
     for (const name of ['vert_vp9.mp4', 'land_vp9.mp4', 'music.wav']) await page.locator(`.lib-card[title^="${name}"] .lib-add`).click({ force: true });
@@ -501,6 +501,112 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// Between Captions and the Editor: the header switch takes a captioned video
+// (with the style changed in the type bar) into the editor, comes back to the same
+// video, and going again reopens the same edit. Then the editor's start screen:
+// a format and a starter layout, a custom size, and "Import a video" matching it.
+{
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  const projects = () => page.evaluate(() => new Promise((res) => {
+    const q = indexedDB.open('capstudio-editor');
+    q.onsuccess = () => { const t = q.result.transaction('projects').objectStore('projects').getAll(); t.onsuccess = () => res(t.result.map((p) => ({ source: p.source, W: p.W, H: p.H }))); };
+  }));
+  try {
+    const diffs = [];
+    await page.goto(BASE);
+    await page.waitForSelector('.tester-name:not(:empty)', { timeout: 15000 });
+    // first page: the editor and the Adobe panel as cards; the hero phone's tester
+    if (await page.locator('.more-tools .tool-card').count() !== 2) diffs.push('tool cards missing');
+    const name0 = await page.textContent('.tester-name');
+    await page.click('.tester-arrow[aria-label="Next style"]');
+    const name1 = await page.textContent('.tester-name');
+    const startWith = await page.textContent('.start-with');
+    if (name0 === name1 || !startWith.includes(name1)) diffs.push(`tester: ${name0} → ${name1}, "${startWith}"`);
+    await page.fill('.tester-input', 'Free delivery today');
+    await page.waitForTimeout(600);
+    const shown = await page.evaluate(() => document.querySelector('.hero-phone .live-captions').textContent);
+    if (!/Free|FREE|free/.test(shown)) diffs.push(`typed line not shown on the phone ("${shown.slice(0, 40)}")`);
+
+    await page.setInputFiles('#file-input', MEDIA + 'vert.webm');
+    await page.waitForFunction(() => !document.querySelector('#export-btn')?.disabled, null, { timeout: 120000 });
+    // the type bar changes the captions live
+    const size0 = Number(await page.inputValue('.tb-num'));
+    await page.click('.tb-size [aria-label="Bigger"]');
+    await page.click('.typebar [aria-label="lower case"]');
+    await page.click('.typebar [aria-label="Near the top"]');
+    const size1 = Number(await page.inputValue('.tb-num'));
+    if (size1 !== size0 + 4) diffs.push(`type bar size ${size0} → ${size1}`);
+    // phone view: a 9:19.5 phone with the video fitted on its screen
+    await page.click('.view-seg [data-view="phone"]');
+    const ph = await page.evaluate(() => { const d = document.querySelector('.device').getBoundingClientRect(), f = document.querySelector('.frame').getBoundingClientRect();
+      return { ratio: d.height / d.width, inside: f.left >= d.left && f.right <= d.right && f.top >= d.top && f.bottom <= d.bottom, ui: !!document.querySelector('.du-actions') }; });
+    if (Math.abs(ph.ratio - 19.5 / 9) > 0.03 || !ph.inside || !ph.ui) diffs.push(`phone view ${JSON.stringify(ph)}`);
+
+    await page.click('.app-switch [data-app="editor"]');
+    await page.waitForURL(/\/edit\?project=/, { timeout: 30000 });
+    await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'captions'), null, { timeout: 60000 });
+    const carried = await page.evaluate(() => { const c = window.__editor.ed.project.clips.find((x) => x.type === 'captions'); return { size: c.style.size, textCase: c.style.textCase, vPos: c.style.vPos }; });
+    if (carried.size !== size1 || carried.textCase !== 'lower' || carried.vPos !== 'top') diffs.push(`style not carried ${JSON.stringify(carried)}`);
+    // the editor's caption settings
+    await page.evaluate(() => { const c = window.__editor.ed.project.clips.find((x) => x.type === 'captions'); window.__editor.select([c.id]); });
+    const capsBefore = await page.evaluate(() => window.__editor.ed.project.clips.find((x) => x.type === 'captions').captions.length);
+    const words = page.locator('.ins-row:has(label:text-is("Max words")) input[type=number]');
+    await words.fill('2'); await words.press('Enter');
+    const capsAfter = await page.evaluate(() => window.__editor.ed.project.clips.find((x) => x.type === 'captions').captions.length);
+    if (capsAfter <= capsBefore) diffs.push(`max words didn't re-split (${capsBefore} → ${capsAfter})`);
+    // keyboard shortcuts and the play button's shape
+    await page.keyboard.press('?');
+    if (!(await page.locator('.ed-keys').isVisible())) diffs.push('shortcuts dialog');
+    await page.keyboard.press('Escape');
+    const pb = await page.evaluate(() => { const r = document.querySelector('.vw-play').getBoundingClientRect(); return [r.width, r.height]; });
+    if (pb[0] !== pb[1]) diffs.push(`play button ${pb}`);
+
+    await page.click('.app-switch [data-app="captions"]');
+    await page.waitForFunction(() => document.querySelector('#file-name')?.textContent === 'vert.webm' && !document.querySelector('#export-btn')?.disabled, null, { timeout: 60000 });
+    await page.click('.app-switch [data-app="editor"]');
+    await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'captions'), null, { timeout: 60000 });
+    const ps = await projects();
+    if (ps.length !== 1 || !ps[0].source) diffs.push(`expected the same edit reopened, got ${JSON.stringify(ps)}`);
+
+    // start screen: Landscape 16:9 + "Product launch"
+    await page.click('.ed-top a[aria-label="All projects"]');
+    await page.waitForSelector('.es-tpl');
+    await page.click('.es-format[data-id="16x9"]');
+    await page.click('.es-tpl[data-id="launch"]');
+    await page.click('.es-go .btn');
+    await page.waitForFunction(() => window.__editor?.ed.project?.W === 1920, null, { timeout: 10000 });
+    const launch = await page.evaluate(() => { const p = window.__editor.ed.project; return { W: p.W, H: p.H, bg: p.bg, texts: p.clips.filter((c) => c.type === 'text').length, onV1: p.clips.some((c) => c.track === p.tracks.filter((t) => t.type === 'video').at(-1).id) }; });
+    if (launch.H !== 1080 || launch.bg !== '#6037D7' || launch.texts < 3 || launch.onV1) diffs.push(`starter ${JSON.stringify(launch)}`);
+    // custom size
+    await page.click('.ed-top a[aria-label="All projects"]');
+    await page.waitForSelector('.es-tpl');
+    await page.click('.es-tpl[data-id="blank"]');
+    await page.fill('.es-size input >> nth=0', '1234'); await page.press('.es-size input >> nth=0', 'Tab');
+    await page.fill('.es-size input >> nth=1', '701'); await page.press('.es-size input >> nth=1', 'Tab');
+    await page.click('.es-go .btn');
+    await page.waitForFunction(() => window.__editor?.ed.project?.W === 1234, null, { timeout: 10000 });
+    const custom = await page.evaluate(() => [window.__editor.ed.project.W, window.__editor.ed.project.H, window.__editor.ed.project.clips.length]);
+    if (custom[1] !== 702 || custom[2] !== 0) diffs.push(`custom size ${custom}`);
+    // import a video: the canvas matches it
+    await page.click('.ed-top a[aria-label="All projects"]');
+    await page.waitForSelector('.es-quick input[type=file]', { state: 'attached' });
+    await page.setInputFiles('.es-quick input[type=file]', MEDIA + 'land_vp9.mp4');
+    await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'video'), null, { timeout: 30000 });
+    const imp = await page.evaluate(() => { const p = window.__editor.ed.project; return [p.W, p.H, p.clips[0].start]; });
+    if (imp[0] !== 1920 || imp[1] !== 1080 || imp[2] !== 0) diffs.push(`import a video ${imp}`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ Captions ⇄ Editor: type bar and phone view, style carried into the editor and back, the same edit reopened; start screen: format + starter, custom size, import matches the video; caption settings and shortcuts in the editor');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-switch.png') }).catch(() => {});
+    fail('Captions ⇄ Editor', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // The Adobe panel's own layout, in a narrow docked panel: the page never scrolls,
 // the preview, every tool tab and the main action stay on screen, only the
 // settings scroll, and each tool keeps its scroll position and folded sections.
@@ -543,6 +649,8 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     if (!folded) diffs.push('folded section not kept');
     if (third !== 'effects') diffs.push(`key 3 opened ${third}`);
     if (await frame.locator('#to-editor').count()) diffs.push('the editor link shows in the panel');
+    if (await frame.locator('.app-switch, .tool-card').count()) diffs.push('the Captions/Editor switch shows in the panel');
+    if (await frame.locator('.typebar').isVisible()) diffs.push('the type bar shows in the panel');
     if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
     if (diffs.length) throw new Error(diffs.join(', '));
     console.log('✓ Adobe panel layout (380×860): no page scroll, preview, all tabs and "Add to timeline" always on screen; scroll and folds kept per tool; keys 1–7');

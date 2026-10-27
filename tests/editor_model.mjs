@@ -166,5 +166,26 @@ const v1 = (p) => p.tracks.filter((t) => t.type === 'video').at(-1).id;
   store.undo(); store.undo();
   check('undo puts it back', near(store.ed.project.clips.find((c) => c.id === b.id).start, 4));
 }
+// Starter layouts: built for any canvas, scaled by its short side, above the main
+// track (V1 stays free for videos), and even canvas sizes.
+{
+  const { STARTERS, evenSize, FORMATS } = await import('../static/js/editor/starters.js');
+  let ok = true, extra = '';
+  for (const f of FORMATS.filter((x) => x.id !== 'custom')) {
+    for (const st of STARTERS) {
+      const p = newProject({ W: f.W, H: f.H });
+      st.build(p);
+      const main = v1(p), k = Math.min(p.W, p.H) / 1080;
+      for (const c of p.clips) {
+        const inside = Math.abs(c.props.x) < p.W / 2 && Math.abs(c.props.y) < p.H / 2;
+        const scaled = c.type !== 'text' || c.text.size > 20 * k;
+        if (c.track === main || !inside || !scaled) { ok = false; extra = `${st.id} on ${f.id}: ${c.name}`; }
+      }
+      if (st.id !== 'blank' && !p.clips.length) { ok = false; extra = `${st.id} is empty`; }
+    }
+  }
+  check('starter layouts fit every format, above the main track', ok, extra);
+  check('canvas sizes are even and in range', evenSize(1235, 0) === 1236 && evenSize(10, 640) === 640 && evenSize(99999, 0) === 7680 && evenSize('x', 1080) === 1080);
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

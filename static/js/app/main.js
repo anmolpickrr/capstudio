@@ -4,7 +4,8 @@ import { api } from './api.js';
 import { resumeQueue } from './queue.js';
 import { leaveProject } from './session.js';
 import { set, state } from './store.js';
-import { renderStudio } from './studio.js';
+import { openInEditor, openSaved, renderStudio } from './studio.js';
+import { appSwitch } from './appswitch.js';
 import { $, toast } from './ui.js';
 
 async function boot() {
@@ -16,8 +17,12 @@ async function boot() {
   const chip = $('#privacy-chip');
   chip.textContent = 'Your files are deleted after you download';
   chip.title = `Videos and captions are deleted ${r.downloadGraceMin} min after download, or ${Math.round(r.jobTtlMin / 6) / 10} h after your last activity.`;
+  if (!document.documentElement.classList.contains('in-panel')) $('.brand').after(appSwitch('captions', { editor: openInEditor }));
   route();
   resumeQueue();
+  // from the editor's Captions switch: open that captioned video right away
+  const open = new URLSearchParams(location.search).get('open');
+  if (open) { history.replaceState(null, '', '/'); openSaved(open); }
 }
 
 function showUser(me) {

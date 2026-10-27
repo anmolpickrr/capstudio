@@ -8,6 +8,13 @@ import { editCaption } from './captionops.js';
 import { check, fitStyle, renderOverlay, zoneById, zoneFits, ZONES } from './safezones.js';
 import { emit, setStyle, state } from './store.js';
 import { $, fmtTime, h, toast } from './ui.js';
+import { svgIcon } from './showcase.js';
+import { typeBar } from './typebar.js';
+
+const VIEW_KEY = 'capstudio-preview-view';
+const inPanel = () => document.documentElement.classList.contains('in-panel');
+// what the top of the app's screen says, per safe-zone platform
+const SCREEN_TITLE = { 'ig-reels': 'Reels', 'ig-stories': '', 'fb-reels': 'Reels', 'fb-stories': '', 'yt-shorts': 'Shorts', whatsapp: 'Status', tiktok: 'For You' };
 
 export class Stage {
   constructor(root) {
@@ -21,11 +28,16 @@ export class Stage {
     this.processing = h('div', { class: 'processing', hidden: true });
     this.watermark = h('img', { class: 'watermark', alt: '', hidden: true, draggable: 'false' });
     this.frame = h('div', { class: 'frame' }, this.video, this.watermark, this.svg, this.guides);
-    this.stage = h('div', { class: 'stage' }, this.frame, this.processing);
+    // the phone view: the video on a phone screen, under the app's own buttons
+    this.chrome = h('div', { class: 'device-ui', 'aria-hidden': 'true' });
+    this.device = h('div', { class: 'device' }, h('div', { class: 'device-screen' }, this.frame, this.chrome));
+    try { this.view = inPanel() ? 'frame' : localStorage.getItem(VIEW_KEY) || 'frame'; } catch { this.view = 'frame'; }
+    this.stage = h('div', { class: 'stage' }, this.device, this.processing);
     this.renderer = new SvgRenderer(this.svg);
     this.transport = this.buildTransport();
     this.zoneBar = this.buildZoneBar();
-    root.replaceChildren(this.zoneBar, this.stage, this.transport);
+    this.typebar = typeBar();
+    root.replaceChildren(this.zoneBar, this.typebar.el, this.stage, this.transport);
 
     this.ro = new ResizeObserver(() => this.fit());
     this.ro.observe(this.stage);
@@ -49,7 +61,7 @@ export class Stage {
   get duration() { return state.project?.info?.duration || this.video.duration || 0; }
   get time() { return this.video.currentTime; }
 
-  destroy() { this.ro.disconnect(); this.video.pause(); this.video.removeAttribute('src'); this.video.load(); this.dead = true; }
+  destroy() { this.typebar.destroy(); this.ro.disconnect(); this.video.pause(); this.video.removeAttribute('src'); this.video.load(); this.dead = true; }
 
   buildTransport() {
     this.playBtn = h('button', { class: 'play', 'aria-label': 'Play', 'data-tip': 'Play / pause (Space)', onclick: () => this.toggle() });
@@ -73,6 +85,9 @@ export class Stage {
     if (p.src && this.src !== p.src) { this.src = p.src; this.proxyTried = false; this.video.src = p.src; }
     this.renderGuides();
     this.renderWatermark();
+    this.renderView();
+    this.typebar.el.hidden = state.phase !== 'editing' || !state.captions.length;
+    if (!this.typebar.el.hidden) this.typebar.sync();
     const busy = state.phase === 'uploading' || state.phase === 'generating';
     this.processing.hidden = !busy;
     if (busy) this.renderProcessing();
@@ -97,10 +112,51 @@ export class Stage {
     const box = this.stage.getBoundingClientRect();
     if (!box.width || !box.height) return;
     const ar = this.W / this.H;
-    let w = box.width, hgt = w / ar;
-    if (hgt > box.height) { hgt = box.height; w = hgt * ar; }
+    let bw = box.width, bh = box.height;
+    if (this.view === 'phone') {
+      // a 9:19.5 phone (bezel 10px) as tall as there's room for; the video fits its screen
+      const bezel = 10;
+      let ph = bh, pw = ph * (9 / 19.5);
+      if (pw > bw) { pw = bw; ph = pw * (19.5 / 9); }
+      Object.assign(this.device.style, { width: `${Math.floor(pw)}px`, height: `${Math.floor(ph)}px` });
+      bw = pw - bezel * 2; bh = ph - bezel * 2;
+    } else Object.assign(this.device.style, { width: '', height: '' });
+    let w = bw, hgt = w / ar;
+    if (hgt > bh) { hgt = bh; w = hgt * ar; }
     this.frame.style.width = `${Math.floor(w)}px`;
     this.frame.style.height = `${Math.floor(hgt)}px`;
+  }
+
+  // Frame or phone view; the phone shows the chosen platform's buttons (Reels by default).
+  setView(v) {
+    this.view = v;
+    try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ }
+    this.renderView();
+    this.fit();
+  }
+
+  renderView() {
+    const phone = this.view === 'phone';
+    this.stage.classList.toggle('phone-view', phone);
+    for (const b of this.viewButtons || []) b.setAttribute('aria-pressed', String(b.dataset.view === this.view));
+    const zone = zoneById(state.safeZone);
+    const platform = zone?.vertical ? zone.id : 'ig-reels';
+    const key = phone ? `${platform}|${this.W > this.H ? 'w' : 't'}` : '';
+    if (key === this.chromeKey) return;
+    this.chromeKey = key;
+    this.chrome.replaceChildren();
+    if (!phone) return;
+    const title = SCREEN_TITLE[platform] ?? 'Reels';
+    const action = (name, count) => h('span', { class: 'reel-action', html: `${svgIcon(name)}${count ? `<small>${count}</small>` : ''}` });
+    const story = platform.includes('stories') || platform === 'whatsapp';
+    this.chrome.append(
+      h('div', { class: 'du-top' }, story ? h('span', { class: 'du-bars' }, h('i'), h('i'), h('i')) : null,
+        h('b', {}, title), h('span', { html: svgIcon('camera') })),
+      story ? null : h('div', { class: 'du-actions' }, action('heart', '12.4K'), action('comment', '318'), action('share', '1.2K'), action('more')),
+      h('div', { class: 'du-meta' },
+        h('div', { class: 'reel-user' }, h('i', {}), h('b', {}, 'yourbrand'), story ? null : h('span', {}, 'Follow')),
+        story ? h('div', { class: 'du-reply' }, 'Send message') : h('p', {}, state.project?.name?.replace(/\.[^.]+$/, '') || 'Your video'),
+        story ? null : h('div', { class: 'reel-audio', html: `${svgIcon('music')}<span>Original audio</span>` })));
   }
 
   async useProxy() {
@@ -143,7 +199,11 @@ export class Stage {
       onclick: () => { state.safeZone = z.id; this.zoneKey = null; this.refresh(); } }, z.label));
     this.zoneStatus = h('div', { class: 'zone-status', role: 'status', 'aria-live': 'polite' });
     this.zoneSource = h('p', { class: 'zone-source' });
+    this.viewButtons = [['frame', 'frame', 'Video only'], ['phone', 'phone', 'On a phone, with the app’s buttons']].map(([v, ico, tip]) =>
+      h('button', { type: 'button', 'data-view': v, 'aria-label': tip, 'data-tip': tip, 'data-tip-pos': 'below', html: `${icon(ico)}<span>${v === 'frame' ? 'Frame' : 'Phone'}</span>`,
+        onclick: () => this.setView(v) }));
     return h('div', { class: 'zone-bar' },
+      inPanel() ? null : h('div', { class: 'seg view-seg', role: 'group', 'aria-label': 'Preview view' }, this.viewButtons),
       h('span', { class: 'zone-title' }, 'Safe zone'),
       h('div', { class: 'zone-chips', role: 'group', 'aria-label': 'Safe zone format' }, this.zoneButtons),
       this.zoneStatus, this.zoneSource);

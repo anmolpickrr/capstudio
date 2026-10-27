@@ -52,12 +52,13 @@ async function soundFile(p, dur) {
 }
 
 // A captions clip from words (in timeline time), on the top video track.
-async function placeCaptions(words, style, spaced = true, name = 'Captions') {
+async function placeCaptions(words, style, spaced = true, name = 'Captions', source = null) {
   const p = ed.project;
   await ensureFonts(fontsFor([{ words }], style));
   const caps = chunkWords(words, style, (ws) => fitsCaption(ws, style, p.W, p.H));
   const dur = Math.max(duration(p), ...caps.map((c) => c.end));
   const c = makeClip('captions', { name, captions: caps, style: { ...style }, dur, spaced, templateId: TEMPLATES.find((t) => JSON.stringify(t.style) === JSON.stringify(style))?.id });
+  if (source) c.source = source;
   edit((proj) => {
     const top = proj.tracks.find((t) => t.type === 'video' && !t.locked && isFree(proj, t.id, 0, dur)) || addTrack(proj, 'video');
     addClip(proj, c, { track: top.id, at: 0 });
@@ -109,9 +110,32 @@ export async function fromCapstudio(id, { withVideo = true } = {}) {
   }
   if (record.captions?.length && record.style) {
     const words = record.captions.flatMap((c) => c.words);
-    await placeCaptions(words, record.style, record.transcript?.spaced ?? true, `Captions · ${record.name || 'Capstudio'}`);
+    await placeCaptions(words, record.style, record.transcript?.spaced ?? true, `Captions · ${record.name || 'Capstudio'}`, id);
   }
+  edit((p) => { p.source = id; });
   return { videoClip, captions: record.captions?.length || 0 };
+}
+
+// Coming back from Capstudio to an edit made from it: bring its captions (words and
+// style) up to date, keeping where the captions clip sits. Returns true if changed.
+export async function syncFromCapstudio(id) {
+  const saved = await loadCapstudio(id);
+  if (!saved?.record.captions?.length) return false;
+  const { record } = saved;
+  const words = record.captions.flatMap((c) => c.words);
+  const clip = ed.project.clips.find((c) => c.type === 'captions' && c.source === id);
+  if (!clip) { await placeCaptions(words, record.style, record.transcript?.spaced ?? true, `Captions · ${record.name || 'Capstudio'}`, id); return true; }
+  const same = JSON.stringify(clip.style) === JSON.stringify(record.style)
+    && JSON.stringify(clip.captions.flatMap((c) => c.words)) === JSON.stringify(words);
+  if (same) return false;
+  const p = ed.project;
+  await ensureFonts(fontsFor([{ words }], record.style));
+  const caps = chunkWords(words, record.style, (ws) => fitsCaption(ws, record.style, p.W, p.H));
+  edit((x) => {
+    const c = x.clips.find((o) => o.id === clip.id);
+    c.captions = caps; c.style = { ...record.style }; c.templateId = record.templateId || c.templateId;
+  });
+  return true;
 }
 
 // The Captions tab of the library.

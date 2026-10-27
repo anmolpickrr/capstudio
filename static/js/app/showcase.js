@@ -73,7 +73,7 @@ function startLoop() {
 // Live captions in a W×H frame, looping on a clock. `scale` enlarges the type
 // for small cards so it reads at a glance.
 function livePlayer(text, templateId, { W, H, scale = 1, textSize = 0, onLoop, el, fit = false }) {
-  const { words, duration } = timed(text);
+  let { words, duration } = timed(text);
   const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
   svg.setAttribute('class', 'live-captions');
   svg.setAttribute('preserveAspectRatio', 'xMidYMid meet');
@@ -113,6 +113,12 @@ function livePlayer(text, templateId, { W, H, scale = 1, textSize = 0, onLoop, e
       timer = setTimeout(() => p.setTemplate(), 60);
     }).observe(el);
   }
+  // new words (typed by the visitor), from the start
+  p.setText = (t) => {
+    ({ words, duration } = timed(t));
+    Object.assign(p, { duration, still: words[Math.min(3, words.length - 1)].start + 0.1, t0: performance.now(), lastT: 0 });
+    return p.setTemplate();
+  };
   p.setTemplate(templateId);
   p.observer = new IntersectionObserver(([entry]) => { p.visible = entry.isIntersecting; }, { threshold: 0.15 });
   // start watching once the element is on the page; watching a detached element
@@ -133,19 +139,39 @@ const ICON = {
   camera: '<rect x="3" y="7" width="18" height="13" rx="3"/><circle cx="12" cy="13.5" r="3.5"/><path d="M9 7l1.5-2.5h3L15 7"/>',
   music: '<path d="M9 18V5l11-2v13"/><circle cx="6" cy="18" r="3"/><circle cx="17" cy="16" r="3"/>',
 };
-const svgIcon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`;
+export const svgIcon = (name) => `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">${ICON[name]}</svg>`;
 
 // A Reels-style screen: soft studio backdrop, the app's own chrome, and the
 // live caption in the safe area, changing style every loop.
-export function heroPhone() {
-  const label = h('span', { class: 'phone-style' });
+// Under it, a tester: step through the styles and type your own line; the style
+// shown becomes the one the upload starts with.
+export function heroPhone(onPick) {
+  const label = h('b', { class: 'tester-name', 'aria-live': 'polite' });
   const screen = h('div', { class: 'phone-screen' });
   const frame = h('div', { class: 'reel-backdrop' });
-  let k = 0;
+  let k = 0, manual = false;
   const show = () => { label.textContent = templateById(HERO_STYLES[k])?.name || ''; };
   const { p, svg } = livePlayer(HERO_TEXT, HERO_STYLES[0], { W: 1080, H: 1920, textSize: 160, el: screen,
-    onLoop: () => { k = (k + 1) % HERO_STYLES.length; show(); p.setTemplate(HERO_STYLES[k]); } });
+    onLoop: () => { if (manual) return; k = (k + 1) % HERO_STYLES.length; show(); p.setTemplate(HERO_STYLES[k]); } });
   show();
+  const pick = (d) => {
+    manual = true;
+    k = (k + d + HERO_STYLES.length) % HERO_STYLES.length;
+    show();
+    p.setTemplate(HERO_STYLES[k]);
+    const tpl = templateById(HERO_STYLES[k]);
+    set({ templateId: tpl.id, style: { ...tpl.style } });
+    onPick?.(tpl);
+  };
+  const arrow = (d) => h('button', { type: 'button', class: 'tester-arrow', 'aria-label': d > 0 ? 'Next style' : 'Previous style',
+    html: `<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="${d > 0 ? 'm9 6 6 6-6 6' : 'm15 6-6 6 6 6'}"/></svg>`, onclick: () => pick(d) });
+  const input = h('input', { class: 'tester-input', type: 'text', maxlength: 90, placeholder: 'Type a line to see it captioned', 'aria-label': 'Your own line, shown captioned on the phone' });
+  let timer = 0;
+  input.addEventListener('input', () => {
+    manual = true;
+    clearTimeout(timer);
+    timer = setTimeout(() => p.setText(input.value.trim() || HERO_TEXT), 220);
+  });
   const action = (icon, count) => h('span', { class: 'reel-action', html: `${svgIcon(icon)}${count ? `<small>${count}</small>` : ''}` });
   screen.append(frame, svg,
     h('div', { class: 'reel-top' }, h('b', {}, 'Reels'), h('span', { html: svgIcon('camera') })),
@@ -155,7 +181,11 @@ export function heroPhone() {
       h('p', {}, 'One click checkout is here'),
       h('div', { class: 'reel-audio', html: `${svgIcon('music')}<span>Original audio</span>` })),
     h('span', { class: 'reel-progress' }, h('i', {})));
-  return h('div', { class: 'phone', 'aria-hidden': 'true' }, h('span', { class: 'phone-notch' }), screen, label);
+  return h('div', { class: 'hero-phone' },
+    h('div', { class: 'phone', 'aria-hidden': 'true' }, h('span', { class: 'phone-notch' }), screen),
+    h('div', { class: 'tester' },
+      h('div', { class: 'tester-styles', role: 'group', 'aria-label': 'Caption style' }, arrow(-1), label, arrow(1)),
+      input));
 }
 
 // ------------------------------------------------------------ specimens

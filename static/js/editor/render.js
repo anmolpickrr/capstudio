@@ -91,6 +91,8 @@ function grade(l, w, h, fx, redraw) {
 // ---------------------------------------------------------------- text
 
 const textCache = new Map();
+// After a font loads, text drawn with a stand-in font is drawn again.
+export function clearTextCache() { textCache.clear(); }
 let measureCtx = null;
 const mctx = () => (measureCtx ||= new OffscreenCanvas(8, 8).getContext('2d'));
 

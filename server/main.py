@@ -706,7 +706,11 @@ def panel_zip(request: Request):
             data = f.read_bytes()
             if rel == "index.html":
                 data = re.sub(rb'data-site="[^"]*"', b'data-site="' + site_url(request).encode() + b'"', data)
-            z.writestr(rel, data)
+            # each file dated by its own modification time, so the same files give the same zip
+            info = zipfile.ZipInfo(rel, date_time=time.localtime(max(f.stat().st_mtime, 315532800))[:6])
+            info.compress_type = zipfile.ZIP_DEFLATED
+            info.external_attr = 0o644 << 16
+            z.writestr(info, data)
     return Response(buf.getvalue(), media_type="application/zip",
                     headers={"Content-Disposition": 'attachment; filename="capstudio-panel.zip"',
                              "Cache-Control": "no-cache"})
