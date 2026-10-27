@@ -116,10 +116,10 @@ export function formatsSection() {
     let set = all[f.id];
     const box = h('input', { type: 'checkbox', checked: set.on ? true : null, 'aria-label': `Include ${f.label}` });
     const { W, H } = formatSize(f, info.width, info.height);
-    const canvas = h('canvas', { class: 'fmt-preview', width: Math.round((W / H) * 160), height: 160 });
+    const canvas = h('canvas', { class: 'fmt-preview', width: Math.round((W / H) * 180), height: 180 });
     const status = h('span', { class: 'fmt-status' });
     const modeSeg = h('div', { class: 'seg fmt-mode', role: 'group', 'aria-label': 'Framing' },
-      [['fill', 'Crop to fill'], ['fit', 'Fit, blurred background']].map(([v, t]) => h('button', { type: 'button', 'data-v': v,
+      [['fill', 'Crop to fill', 'Fills the frame; the edges are cropped'], ['fit', 'Fit + blur', 'The whole picture, over a blurred copy of it']].map(([v, t, tip]) => h('button', { type: 'button', 'data-v': v, title: tip,
         onclick: () => update({ mode: v }) }, t)));
     // focus: which part of the picture a crop keeps
     const r = frameRects(info.width, info.height, W, H, { mode: 'fill' }).cover;
@@ -128,7 +128,7 @@ export function formatsSection() {
       'aria-label': axis === 'fx' ? 'Keep: left to right' : 'Keep: top to bottom' });
     focus.addEventListener('input', () => update({ [axis]: Number(focus.value) / 100 }));
     const focusField = h('label', { class: 'field fmt-focus' },
-      h('span', { class: 'label' }, axis === 'fx' ? 'Keep: left ↔ right' : 'Keep: top ↕ bottom'), focus);
+      h('span', { class: 'label' }, axis === 'fx' ? 'Keep left ↔ right' : 'Keep top ↕ bottom'), focus);
     const zoneSel = f.id === '9x16'
       ? h('select', { class: 'select', 'aria-label': 'Safe zone' }, VERTICAL_ZONES.map((z) => h('option', { value: z.id }, z.name)))
       : null;
@@ -157,11 +157,11 @@ export function formatsSection() {
       drawPreview(canvas, p);
     }
     const row = h('div', { class: 'fmt-row' },
-      h('label', { class: 'fmt-pick' }, box, canvas),
+      h('label', { class: 'fmt-pick' }, canvas),
       h('div', { class: 'fmt-body' },
-        h('div', { class: 'fmt-title' }, h('b', {}, f.label), h('small', {}, `${W} × ${H} · ${f.note}`)),
+        h('label', { class: 'fmt-title' }, box, h('span', {}, h('b', {}, f.label), h('small', {}, `${W} × ${H} · ${f.note}`))),
         modeSeg, focusField,
-        h('div', { class: 'fmt-zone' }, zoneSel || h('span', { class: 'hint' }, 'Title safe (10% margins)'), status, keep)));
+        h('div', { class: 'fmt-zone' }, zoneSel, status, keep)));
     requestAnimationFrame(paint);
     return row;
   });

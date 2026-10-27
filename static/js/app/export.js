@@ -49,47 +49,81 @@ export function openExport() {
   const serverCanBurn = !cfg.maxBurnPixels || info.width * info.height <= cfg.maxBurnPixels;
   const canBurn = inBrowser || serverCanBurn;
   let quality = 'high';
-  const qSeg = h('div', { class: 'seg', role: 'group', 'aria-label': 'Quality' },
-    [['max', 'Maximum'], ['high', 'High'], ['fast', 'Fast']].map(([v, t]) => h('button', { type: 'button', 'data-v': v, 'aria-pressed': String(v === quality),
-      onclick: (e) => { quality = v; qSeg.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } }, t)));
-  const opt = (value, title, desc, extra, checked, disabled) => h('label', { class: `option${disabled ? ' disabled' : ''}` },
-    h('input', { type: 'radio', name: 'export-kind', value, checked: checked ? true : null, disabled: disabled ? true : null }),
-    h('div', { style: { display: 'grid', gap: '8px' } }, h('div', {}, h('b', {}, title), h('span', {}, desc)), extra));
-  const files = h('div', { class: 'files' }, [['srt', 'SRT'], ['vtt', 'WebVTT'], ['ass', 'ASS (styled)'], ['txt', 'Transcript']]
-    .map(([k, t]) => h('button', { class: 'btn sm', type: 'button', html: `<span>${t}</span>`, onclick: () => captionFile(k) })));
+  // quality: three choices with what each is for
+  const qSeg = h('div', { class: 'ex-quality', role: 'radiogroup', 'aria-label': 'Quality' },
+    [['max', 'Maximum', 'For further editing'], ['high', 'High', 'Looks like the original'], ['fast', 'Fast', 'Quickest']].map(([v, t, sub]) =>
+      h('button', { type: 'button', role: 'radio', 'data-v': v, 'aria-checked': String(v === quality), 'aria-pressed': String(v === quality),
+        onclick: (e) => { quality = v; qSeg.querySelectorAll('button').forEach((b) => { const on = b === e.currentTarget; b.setAttribute('aria-checked', String(on)); b.setAttribute('aria-pressed', String(on)); }); } },
+      h('b', {}, t), h('small', {}, sub))));
+  const qualityField = h('div', { class: 'ex-field' }, h('span', { class: 'ex-label' }, 'Quality'), qSeg);
+
+  // what can be exported: a list on the left, the chosen one's settings on the right
+  const TYPES = [
+    { v: 'burn', icon: 'film', title: 'Video with captions', sub: `MP4 · ${outCodec}`, disabled: !canBurn, go: 'Export video' },
+    { v: 'formats', icon: 'templates', title: 'Every format', sub: '9:16 · 4:5 · 1:1 · 16:9', go: 'Export formats' },
+    { v: 'overlay', icon: 'captions', title: 'Transparent captions', sub: 'For Premiere Pro, After Effects', go: 'Export captions' },
+    { v: 'ae', icon: 'effects', title: 'After Effects layers', sub: 'Editable text, keyframed', go: 'Download script' },
+    { v: 'soft', icon: 'text', title: 'Subtitle track', sub: 'Original picture, not re-encoded', go: 'Export video' },
+    { v: 'files', icon: 'copy', title: 'Caption files', sub: 'SRT · VTT · ASS · TXT', go: null },
+  ];
+  const first = canBurn ? 'burn' : 'soft';
+  const rail = h('div', { class: 'ex-types', role: 'radiogroup', 'aria-label': 'What to export' }, TYPES.map((t) => h('label', { class: `ex-type${t.disabled ? ' disabled' : ''}` },
+    h('input', { type: 'radio', name: 'export-kind', value: t.v, checked: t.v === first ? true : null, disabled: t.disabled ? true : null }),
+    h('span', { class: 'ex-type-icon', html: icon(t.icon) }),
+    h('span', { class: 'ex-type-text' }, h('b', {}, t.title), h('small', {}, t.sub)))));
+
+  const files = h('div', { class: 'ex-files' }, [['srt', 'SRT', 'Subtitles for most players and sites'], ['vtt', 'WebVTT', 'Subtitles for the web'],
+    ['ass', 'ASS', 'Styled subtitles (fonts, colours, motion)'], ['txt', 'Transcript', 'Plain text, no times']]
+    .map(([k, t, sub]) => h('button', { class: 'ex-file', type: 'button', onclick: () => captionFile(k) },
+      h('span', { html: icon('download') }), h('b', {}, t), h('small', {}, sub))));
   const status = h('div', { id: 'export-status' });
   const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Export video</span>', onclick: () => start() });
   const r = state.config.retention;
   const formats = formatsSection();
-  formats.hidden = true;
+  const where = inBrowser ? 'Made on this computer: no upload, no waiting for the server. Keep this tab open while it runs.'
+    : cfg.lowPower && canBurn ? 'Made on the server, about 3–6 minutes for a 30-second reel. Chrome or Edge make it much faster, on this computer.' : null;
+  const pane = (title, text, ...kids) => h('div', { class: 'ex-pane-body' }, h('div', { class: 'ex-pane-head' }, h('h3', {}, title), h('p', {}, text)), ...kids);
+  const list = (items) => h('ul', { class: 'ex-points' }, items.map((t) => h('li', {}, t)));
+  const panes = {
+    burn: pane('Video with captions', `The captions drawn into the picture exactly as previewed, encoded as ${outCodec}.`,
+      qualityField, where ? h('p', { class: 'ex-note' }, where) : null),
+    formats: pane('Every format at once', 'One video per format, each reframed, with its captions checked against that format’s safe zone.', formats),
+    overlay: pane('Transparent captions', 'Just the captions (and the watermark, if it’s on) on a see-through background.',
+      list([`QuickTime Animation .mov with transparency, ${info.width}×${info.height}, same frame rate and length`, 'Put it on the track above your footage, starting at the same frame'])),
+    ae: pane('After Effects layers', 'A script that builds the captions as live text and shape layers, every animation as keyframes, with the fonts it needs.',
+      list(['Unzip, and install the fonts in its “fonts” folder', 'In After Effects: File › Scripts › Run Script File, and pick the .jsx'])),
+    soft: pane('Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn the captions on or off; their style isn’t kept.'),
+    files: pane('Caption files', 'Download the captions on their own, timed to the video.', files),
+  };
+  if (!canBurn) panes.soft.prepend(h('p', { class: 'ex-note warn' }, `This server can draw captions into videos up to 1080p, and this one is ${info.width}×${info.height}.`));
+  const paneWrap = h('div', { class: 'ex-pane' }, ...Object.values(panes), status);
+  const specs = h('div', { class: 'ex-specs' },
+    h('span', {}, `${info.width}×${info.height}`), h('span', {}, info.fps ? `${+info.fps.toFixed(3)} fps` : 'VFR'),
+    h('span', {}, codecName(info.vcodec) + (info.pixFmt?.includes('10') ? ' 10-bit' : '')), h('span', {}, fmtDur(info.duration)));
 
-  dlg.replaceChildren(h('div', { class: 'modal' },
+  dlg.replaceChildren(h('div', { class: 'modal ex-modal' },
     h('div', { class: 'modal-head' },
       h('div', {}, h('h2', {}, 'Export'), h('p', {}, 'Same resolution, frame rate, audio and file name as your original.')),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
-    h('div', { class: 'modal-body' },
-      h('div', { class: 'specs' },
-        h('span', {}, `${info.width}×${info.height}`), h('span', {}, info.fps ? `${+info.fps.toFixed(3)} fps` : 'Variable frame rate'),
-        h('span', {}, codecName(info.vcodec) + (info.pixFmt?.includes('10') ? ' 10-bit' : '')), h('span', {}, fmtDur(info.duration))),
-      inBrowser ? h('p', { class: 'note info' }, 'Your video is made right here on your computer, so there’s no waiting for the server. A 30-second reel usually takes well under a minute. Keep this tab open while it runs.')
-        : cfg.lowPower && canBurn ? h('p', { class: 'note info' }, 'This browser can’t make the video itself, so the server does it. That takes a few minutes, about 3 to 6 for a 30-second reel. For much faster exports, use Chrome or Edge. Keep this tab open while it runs.') : null,
-      canBurn ? null : h('p', { class: 'note' }, `This server can draw captions into videos up to 1080p, and this one is ${info.width}×${info.height}. You can still add a subtitle track or download caption files.`),
-      opt('burn', 'Video with captions', `Captions drawn into the picture exactly as previewed. Encoded as ${outCodec}.`,
-        canBurn ? h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), qSeg,
-          h('span', { class: 'hint' }, 'High is visually identical to the original. Maximum is for further editing; Fast is quickest.')) : null, canBurn, !canBurn),
-      opt('formats', 'Every format at once', 'Vertical 9:16, portrait 4:5, square 1:1 and landscape 16:9 versions in one go, each reframed and with its captions checked against that format’s safe zone. Uses the quality above.', formats),
-      opt('overlay', 'Captions only, transparent', 'Just the captions (and the watermark, if it’s on) on a see-through background, for Premiere Pro and After Effects. Same size, frame rate and length as your video: put it on the track above your footage.'),
-      opt('ae', 'After Effects, editable layers', 'A script that builds the captions in After Effects as live text and shape layers with every animation as keyframes, plus the fonts it needs. Run it from File › Scripts › Run Script File.'),
-      opt('soft', 'Video with a subtitle track', 'The original picture, untouched and not re-encoded. Viewers turn captions on or off; the style isn’t kept.', null, !canBurn),
-      h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
-      status,
-      h('div', { style: { display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: '12px' } },
-        h('p', { class: 'hint', style: { maxWidth: '32ch' } }, `Files are deleted from the server ${r.downloadGraceMin} min after you download.`), go))));
+    h('div', { class: 'ex-body' }, rail, paneWrap),
+    h('div', { class: 'ex-foot' }, specs, h('span', { class: 'ex-keep', title: `Files are deleted from the server ${r.downloadGraceMin} min after you download.` },
+      `Deleted from the server ${r.downloadGraceMin} min after download`), go)));
   dlg.showModal();
-  dlg.querySelectorAll('input[name="export-kind"]').forEach((radio) => radio.addEventListener('change', () => {
-    formats.hidden = dlg.querySelector('input[name="export-kind"]:checked').value !== 'formats';
-    go.querySelector('span').textContent = formats.hidden ? 'Export video' : 'Export every format';
-  }));
+  const paint = () => {
+    const kind = dlg.querySelector('input[name="export-kind"]:checked').value;
+    for (const [k, el] of Object.entries(panes)) el.hidden = k !== kind;
+    const t = TYPES.find((x) => x.v === kind);
+    go.hidden = !t.go;
+    const n = formats.querySelectorAll('.fmt-row:not(.off)').length;
+    go.querySelector('span').textContent = kind === 'formats' ? `Export ${n} format${n === 1 ? '' : 's'}` : t.go || '';
+    go.disabled = kind === 'formats' && !n;
+    // the quality setting belongs to both video kinds
+    if (kind === 'formats') panes.formats.insertBefore(qualityField, formats);
+    else if (kind === 'burn') panes.burn.insertBefore(qualityField, panes.burn.children[1]);
+  };
+  dlg.querySelectorAll('input[name="export-kind"]').forEach((radio) => radio.addEventListener('change', paint));
+  formats.addEventListener('change', () => requestAnimationFrame(paint));
+  paint();
 
   async function start() {
     const kind = dlg.querySelector('input[name="export-kind"]:checked').value;
