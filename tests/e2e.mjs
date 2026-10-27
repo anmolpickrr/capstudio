@@ -783,6 +783,93 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   }
 }
 
+// The whole sequence in Premiere Pro: two videos cut together on V1, a nested
+// sequence on V2, the videos' sound and a voice-over on A1–A2, music on a muted A3.
+// Every playing clip is sent, the edit rebuilt (muted music left out) and captioned
+// over its full 10 s; the captions land on V3 from 0:00.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__panel/?scene=timeline`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the whole sequence")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 180000 });
+    const frame = page.frames().find((f) => f.url().includes('host=premiere'));
+    const st = await frame.evaluate(async () => {
+      const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      return { info: state.project.info, used: state.premiere.used, skipped: state.premiere.skipped, name: state.project.name,
+        caps: state.captions.map((c) => [c.start, c.end]) };
+    });
+    const diffs = [];
+    if (st.info.width !== 1080 || st.info.height !== 1920 || Math.abs(st.info.duration - 10) > 0.1) diffs.push(`timeline ${st.info.width}x${st.info.height} ${st.info.duration}s`);
+    if (st.used?.video !== 2 || st.used?.audio !== 3 || st.skipped !== 1) diffs.push(`used ${JSON.stringify(st.used)}, skipped ${st.skipped} (expected 2 pictures, 3 sounds without the muted music, 1 nested sequence)`);
+    if (!st.caps.length || Math.max(...st.caps.map((c) => c[1])) < 8.5 || Math.min(...st.caps.map((c) => c[0])) > 1) diffs.push(`captions don't cover the whole edit: ${JSON.stringify(st.caps.slice(0, 2))}…`);
+    await app.locator('#export-btn').click();
+    await app.locator('#export-dialog .btn.brand').click();
+    await app.locator('#export-status .result.ok').waitFor({ timeout: 120000 });
+    const out = await page.evaluate(() => ({ log: window.__fake.log,
+      files: Object.fromEntries(Object.entries(window.__written).map(([k, v]) => [k, Array.from(new Uint8Array(v))])) }));
+    const movPath = Object.keys(out.files).find((k) => k.endsWith('.mov'));
+    if (movPath !== '/work/Capstudio/Launch reel captions.mov') diffs.push(`saved as ${movPath}`);
+    const mov = join(OUT, 'panel-seq.mov');
+    writeFileSync(mov, Buffer.from(out.files[movPath] || []));
+    const v = JSON.parse(execFileSync('ffprobe', ['-v', 'error', '-count_frames', '-show_entries', 'stream=codec_name,width,height,nb_read_frames', '-of', 'json', mov])).streams[0];
+    if (v.width !== 1080 || v.height !== 1920 || Number(v.nb_read_frames) !== 250) diffs.push(`captions video ${v.width}x${v.height} ${v.nb_read_frames} frames, expected 1080x1920 250`);
+    const placed = out.log.find((l) => l[0] === 'overwriteClip');
+    if (!placed || placed[1] !== 2 || placed[3] !== 0) diffs.push(`placed ${JSON.stringify(placed)}, expected V3 at 0:00`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ Premiere whole sequence: two cuts, voice-over and video sound mixed (muted music left out, nested sequence counted), captioned over the full 10 s, placed on V3 from 0:00');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-premiere-seq.png') }).catch(() => {});
+    fail('Premiere whole sequence', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// The whole composition in After Effects: two footage layers (one with its sound
+// off) and a voice-over layer (picture off). Captioned over the comp's 12 s and added
+// as editable layers in a precomp at the top, over the full length.
+{
+  const page = await browser.newPage({ viewport: { width: 1280, height: 820 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__panel/ae.html?scene=timeline`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the whole composition")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 180000 });
+    const frame = page.frames().find((f) => f.url().includes('host=aftereffects'));
+    const st = await frame.evaluate(async () => {
+      const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
+      return { info: state.project.info, used: state.premiere.used, caps: state.captions.map((c) => [c.start, c.end]) };
+    });
+    const diffs = [];
+    if (Math.abs(st.info.duration - 12) > 0.1) diffs.push(`timeline ${st.info.duration}s`);
+    if (st.used?.video !== 2 || st.used?.audio !== 2) diffs.push(`used ${JSON.stringify(st.used)} (expected 2 pictures, 2 sounds)`);
+    if (!st.caps.length || Math.max(...st.caps.map((c) => c[1])) < 10.5) diffs.push('captions don\'t reach the end of the comp');
+    await app.locator('#export-btn').click();
+    await app.locator('#export-dialog .btn.brand').click();
+    await app.locator('#export-status .result.ok').waitFor({ timeout: 120000 });
+    const built = await page.evaluate(() => window.__fake.active.list.map((l) => ({ kind: l.kind, name: l.name, startTime: l.startTime, inPoint: l.inPoint, outPoint: l.outPoint, stretch: l.stretch })));
+    const top = built[0];
+    if (top.kind !== 'precomp' || top.startTime !== 0 || top.inPoint !== 0 || top.outPoint !== 12 || top.stretch !== 100) diffs.push(`precomp ${JSON.stringify(top)}`);
+    if (errors.length) diffs.push(`page errors: ${errors.join('; ')}`);
+    if (diffs.length) throw new Error(diffs.join(', '));
+    console.log('✓ After Effects whole composition: every footage layer\'s sound mixed (switched-off sound left out), captioned over 12 s, editable layers in a precomp at the top over the full length');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-ae-comp.png') }).catch(() => {});
+    fail('After Effects whole composition', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
 // After Effects, editable layers: the zip from the Export dialog, and its script run
 // against a stand-in for After Effects (tests/ae_script.mjs).
 {

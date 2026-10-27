@@ -763,6 +763,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .panel-home-card h1 { margin: 0; font: 600 34px/1.1 var(--font-display, var(--font)); letter-spacing: -.02em; }
 .panel-steps { margin: 0; padding-left: 20px; display: grid; gap: 6px; color: var(--text-2); }
 .panel-home-card .btn.lg { justify-self: start; }
+.panel-or { display: flex; align-items: center; gap: 10px; color: var(--text-3); font-size: 12.5px; }
+.panel-or .btn { padding: 0 10px; color: var(--text-2); }
 .linkish { border: 0; background: none; padding: 0; color: var(--accent-hover); font: inherit; font-size: 13px; cursor: pointer; text-decoration: underline; text-underline-offset: 3px; }
 .panel-link { justify-self: start; margin-top: 14px; display: block; }
 .cmd-block { display: grid; gap: 6px; min-width: 0; padding: 12px; border-radius: var(--r-sm); background: rgba(255, 255, 255, .03); border: 1px solid var(--line); }
@@ -847,6 +849,8 @@ dialog::backdrop { background: rgba(0, 0, 0, .72); backdrop-filter: blur(4px); }
 .du-reply { margin-right: -44px; padding: 8px 14px; border-radius: 999px; border: 1px solid rgba(255, 255, 255, .55); font-size: 12px; }
 
 /* ------------------------------------------------------------ preview: type bar */
+/* each part of the preview keeps its row, so a hidden type bar doesn't shift the others */
+.stage-wrap > .zone-bar { grid-row: 1; } .stage-wrap > .typebar { grid-row: 2; } .stage-wrap > .stage { grid-row: 3; } .stage-wrap > .transport { grid-row: 4; }
 .typebar { position: relative; z-index: 6; display: flex; align-items: center; gap: 4px; margin: 10px auto 0; padding: 4px; max-width: calc(100% - 24px); border-radius: 14px;
   border: 1px solid var(--line-2); background: rgba(15, 15, 16, .92); backdrop-filter: blur(10px); box-shadow: var(--shadow); overflow-x: auto; scrollbar-width: none; }
 .typebar::-webkit-scrollbar { display: none; }

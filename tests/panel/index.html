@@ -13,7 +13,23 @@
   <script>
     (async () => {
       document.documentElement.setAttribute('data-site', location.origin);
-      const fake = makeFakePremiere({
+      // ?scene=timeline: an edit of two videos, a voice-over, a muted music track and a
+      // nested sequence; otherwise one clip (vert.webm used from 0:03) at 0:02–0:08
+      const timeline = new URLSearchParams(location.search).get('scene') === 'timeline';
+      const fake = makeFakePremiere(timeline ? {
+        width: 1080, height: 1920, fps: 25, projectPath: '/work/Reel.prproj', name: 'Launch reel',
+        tracks: [
+          [{ name: 'vert.webm', path: '/media/vert.webm', start: 0, end: 4, inPoint: 3 }, { name: 'land.webm', path: '/media/land.webm', start: 4, end: 10, inPoint: 0 }],
+          [{ name: 'Nested intro', start: 2, end: 5 }],
+          [],
+        ],
+        audio: [
+          [{ name: 'vert.webm', path: '/media/vert.webm', start: 0, end: 4, inPoint: 3 }, { name: 'land.webm', path: '/media/land.webm', start: 4, end: 10, inPoint: 0 }],
+          [{ name: 'voice-over', path: '/media/land.webm', start: 1, end: 3, inPoint: 5 }],
+          [{ name: 'music', path: '/media/vert.webm', start: 0, end: 10, inPoint: 0 }],
+        ],
+        mutedAudio: [2],
+      } : {
         width: 1080, height: 1920, fps: 25, projectPath: '/work/Reel.prproj',
         tracks: [
           [{ name: 'vert.webm', path: '/media/vert.webm', start: 2, end: 8, inPoint: 3, selected: true }],

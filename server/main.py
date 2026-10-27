@@ -37,7 +37,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from starlette.middleware.sessions import SessionMiddleware
 
-from . import auth, enhance, media, script, transcribe
+from . import auth, enhance, media, script, timeline, transcribe
 from .fonts import FONTS_DIR, catalogue
 
 logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s %(message)s")
@@ -147,6 +147,10 @@ def delete_job(job_id: str, reason: str) -> None:
 
 
 def sweep_once(now: float) -> None:
+    # timelines still being sent from the Adobe panel, abandoned part-way
+    for tl in list(timelines.values()):
+        if tl.task.status != "running" and now - tl.touched > TIMELINE_IDLE_MIN * 60:
+            drop_timeline(tl.id, "abandoned")
     for job in list(jobs.values()):
         busy = job.render.status == "running" or job.transcription.status == "running"
         if now > job.expires_at() and not busy:
@@ -327,6 +331,180 @@ async def create_job(request: Request):
         jobs[job_id] = job
     log.info("job %s created (%.1f MB, %sx%s)", job_id, size / 1e6, info["width"], info["height"])
     return job.public()
+
+
+# ------------------------------------------------- whole timelines (Adobe panel)
+# A Premiere Pro sequence or After Effects composition with many clips, voice-overs
+# and layers: the panel sends which part of which file sits where, then each file
+# once; the server rebuilds the timeline as one video (server/timeline.py), which
+# then is a job like any upload, captioned over its full length.
+
+TIMELINE_IDLE_MIN = 30
+TIMELINE_MAX_SECONDS = 4 * 3600
+
+
+class TimelineFile(BaseModel):
+    name: str = Field(..., max_length=300)
+    size: int = Field(..., ge=0)
+
+
+class TimelineSegment(BaseModel):
+    file: int = Field(..., ge=0, lt=64)
+    kind: str = Field(..., pattern="^(video|audio)$")
+    start: float = Field(..., ge=0, le=TIMELINE_MAX_SECONDS)
+    end: float = Field(..., ge=0, le=TIMELINE_MAX_SECONDS)
+    inPoint: float = Field(0, ge=0)
+    speed: float = Field(1, gt=0, le=100)
+    track: int = Field(0, ge=0, le=999)
+
+
+class TimelineReq(BaseModel):
+    name: str = Field("Timeline", max_length=200)
+    width: int = Field(..., ge=16, le=8192)
+    height: int = Field(..., ge=16, le=8192)
+    fps: float = Field(..., gt=0, le=240)
+    duration: float = Field(..., gt=0, le=TIMELINE_MAX_SECONDS)
+    files: list[TimelineFile] = Field(..., min_length=1, max_length=64)
+    segments: list[TimelineSegment] = Field(..., min_length=1, max_length=400)
+
+
+@dataclass
+class Timeline:
+    id: str
+    dir: pathlib.Path
+    spec: dict
+    owner: str = ""
+    files: dict = field(default_factory=dict)   # file index -> path, once received
+    task: Task = field(default_factory=Task)
+    touched: float = field(default_factory=time.time)
+    job: str | None = None
+    used: dict | None = None
+
+    def public(self) -> dict:
+        job = jobs.get(self.job) if self.job else None
+        return {"id": self.id, "received": sorted(self.files), "build": self.task.public(), "used": self.used,
+                "job": job.public() if job else None}
+
+
+timelines: dict[str, Timeline] = {}
+
+
+def drop_timeline(tl_id: str, reason: str) -> None:
+    tl = timelines.pop(tl_id, None)
+    uploading.discard(tl_id)
+    if tl and not tl.job:
+        shutil.rmtree(tl.dir, ignore_errors=True)
+    if tl:
+        log.info("timeline %s closed (%s)", tl_id, reason)
+
+
+def get_timeline(tl_id: str, request: Request) -> Timeline:
+    tl = timelines.get(tl_id)
+    user = auth.current_user(request)
+    if tl and user and tl.owner and tl.owner != user["email"]:
+        tl = None
+    if not tl:
+        raise HTTPException(404, "This timeline has expired. Please caption it again.")
+    tl.touched = time.time()
+    return tl
+
+
+@app.post("/api/timelines")
+def create_timeline(req: TimelineReq, request: Request):
+    total = sum(f.size for f in req.files)
+    if total > MAX_UPLOAD_MB * 1024 * 1024:
+        raise HTTPException(413, f"The timeline's media files add up to more than {MAX_UPLOAD_MB} MB.")
+    if any(s.file >= len(req.files) or s.end <= s.start for s in req.segments):
+        raise HTTPException(400, "The timeline's clips don't add up.")
+    if not any(s.kind == "audio" for s in req.segments):
+        raise HTTPException(400, "There's no sound on the timeline to caption. Unmute the voice-over or video tracks and try again.")
+    tl_id = uuid.uuid4().hex
+    jdir = DATA_DIR / tl_id
+    jdir.mkdir(parents=True)
+    uploading.add(tl_id)  # the folder isn't an orphan while files arrive
+    user = auth.current_user(request)
+    timelines[tl_id] = Timeline(id=tl_id, dir=jdir, spec=req.model_dump(), owner=user["email"] if user else "")
+    log.info("timeline %s started (%d files, %d clips, %.1f s)", tl_id, len(req.files), len(req.segments), req.duration)
+    return timelines[tl_id].public()
+
+
+@app.post("/api/timelines/{tl_id}/files/{index}")
+async def timeline_file(tl_id: str, index: int, request: Request):
+    tl = get_timeline(tl_id, request)
+    declared = tl.spec["files"]
+    if not 0 <= index < len(declared):
+        raise HTTPException(404, "No such file in this timeline.")
+    ext = SAFE_NAME.sub("_", pathlib.Path(clean_name(declared[index]["name"])).suffix.lower())[:10] or ".bin"
+    dest = tl.dir / f"part{index}{ext}"
+    limit = declared[index]["size"] + 1024 * 1024
+    size = 0
+    try:
+        with open(dest, "wb") as f:
+            async for chunk in request.stream():
+                size += len(chunk)
+                if size > limit:
+                    raise HTTPException(413, "That file is larger than the panel said.")
+                f.write(chunk)
+                tl.touched = time.time()
+    except BaseException:
+        dest.unlink(missing_ok=True)
+        raise
+    tl.files[index] = str(dest)
+    return tl.public()
+
+
+@app.post("/api/timelines/{tl_id}/build")
+def build_timeline(tl_id: str, request: Request):
+    tl = get_timeline(tl_id, request)
+    missing = [i for i in range(len(tl.spec["files"])) if i not in tl.files]
+    if missing:
+        raise HTTPException(400, f"{len(missing)} of the timeline's files haven't arrived yet.")
+    if tl.task.status in ("queued", "running", "done"):
+        return tl.public()
+    tl.task = Task(status="queued")
+    user = auth.current_user(request)
+    render_pool.submit(_run_timeline, tl, user["email"] if user else "")
+    return tl.public()
+
+
+def _run_timeline(tl: Timeline, owner: str) -> None:
+    task = tl.task
+    task.status, task.started = "running", time.time()
+    dest = tl.dir / "source.mp4"
+    try:
+        def progress(p: float) -> None:
+            task.progress = p
+            tl.touched = time.time()
+
+        tl.used = timeline.compose(tl.spec, tl.files, str(dest), progress, str(tl.dir))
+        info = media.probe(str(dest))
+        for p in tl.files.values():
+            pathlib.Path(p).unlink(missing_ok=True)
+        (tl.dir / "timeline.filter").unlink(missing_ok=True)
+        name = clean_name(f"{tl.spec['name']}.mp4")
+        job = Job(id=tl.id, dir=tl.dir, name=name, source=dest, info=info, owner=owner)
+        with jobs_lock:
+            jobs[job.id] = job
+        tl.job = job.id
+        uploading.discard(tl.id)
+        task.progress, task.status = 1.0, "done"
+        log.info("timeline %s built (%s)", tl.id, tl.used)
+    except Exception as e:  # noqa: BLE001 - shown in the panel
+        log.exception("timeline %s failed", tl.id)
+        task.status, task.error = "error", str(e)
+    finally:
+        task.finished = time.time()
+
+
+@app.get("/api/timelines/{tl_id}")
+def timeline_status(tl_id: str, request: Request):
+    tl = get_timeline(tl_id, request)
+    out = tl.public()
+    if tl.task.status == "done":
+        timelines.pop(tl.id, None)  # the job lives on; the timeline was read for the last time
+    elif tl.task.status == "error":
+        drop_timeline(tl.id, "failed")
+    return out
 
 
 @app.get("/api/jobs/{job_id}")

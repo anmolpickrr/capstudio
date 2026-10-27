@@ -10,8 +10,8 @@
       return { name: name, type: type || 1, getMediaPath: function () { return path; } };
     }
     function children(list) { var c = { numItems: list.length }; for (var i = 0; i < list.length; i++) c[i] = list[i]; return c; }
-    function trackItem(t) {
-      return { name: t.name, mediaType: 'Video', projectItem: t.path !== undefined ? item(t.name, t.path) : null,
+    function trackItem(t, mediaType) {
+      return { name: t.name, mediaType: mediaType || 'Video', disabled: !!t.disabled, projectItem: t.path !== undefined ? item(t.name, t.path) : null,
         start: T(t.start), end: T(t.end), inPoint: T(t.inPoint || 0),
         getSpeed: function () { return t.speed || 1; }, isSelected: function () { return !!t.selected; } };
     }
@@ -28,15 +28,21 @@
       },
     };
     var tracks = opts.tracks.map(function (clips, ti) {
-      var list = clips.map(trackItem);
+      var list = clips.map(function (c) { return trackItem(c, 'Video'); });
       return {
         get clips() { return children(list); },
+        isMuted: function () { return false; },
         overwriteClip: function (it, time) {
           log.push(['overwriteClip', ti, it.getMediaPath(), time]);
           list.push(trackItem({ name: it.name, path: it.getMediaPath(), start: time, end: time + 1 }));
           return true;
         },
       };
+    });
+    // audio tracks (A1 first): voice-overs, music, the sound of video clips
+    var audio = (opts.audio || []).map(function (clips, ti) {
+      var list = clips.map(function (c) { return trackItem(c, 'Audio'); });
+      return { get clips() { return children(list); }, isMuted: function () { return (opts.mutedAudio || []).indexOf(ti) >= 0; } };
     });
     var seq = {
       name: opts.name || 'Reel', frameSizeHorizontal: opts.width, frameSizeVertical: opts.height,
@@ -47,6 +53,7 @@
         return out;
       },
       videoTracks: (function () { var v = { numTracks: tracks.length }; tracks.forEach(function (t, i) { v[i] = t; }); return v; }()),
+      audioTracks: (function () { var v = { numTracks: audio.length }; audio.forEach(function (t, i) { v[i] = t; }); return v; }()),
       createCaptionTrack: function (it, start, fmt) { log.push(['createCaptionTrack', it.getMediaPath(), start, fmt]); return true; },
     };
     var app = {

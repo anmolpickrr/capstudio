@@ -226,3 +226,32 @@ def test_editor_page(client):
     # its scripts and styles come from this release's versioned address
     assert '/v/' in r.text and 'src="js/' not in r.text and 'href="css/' not in r.text
     assert client.get("/edit.html").status_code == 200
+
+
+def test_timeline_rebuilt_from_its_clips(client, video):
+    """A Premiere/After Effects timeline: clips from one file, a muted gap, sound from two
+    places at once, sent once and rebuilt as one video over the timeline's full length."""
+    import time as _t
+    data = video.read_bytes()
+    spec = {"name": "Reel", "width": 1080, "height": 1920, "fps": 25, "duration": 9,
+            "files": [{"name": "clip.mp4", "size": len(data)}],
+            "segments": [{"file": 0, "kind": "video", "start": 0, "end": 4, "inPoint": 2, "track": 0},
+                         {"file": 0, "kind": "video", "start": 5, "end": 9, "inPoint": 10, "speed": 2, "track": 0},
+                         {"file": 0, "kind": "audio", "start": 0, "end": 4, "inPoint": 2},
+                         {"file": 0, "kind": "audio", "start": 5, "end": 9, "inPoint": 10, "speed": 2}]}
+    assert client.post("/api/timelines", json={**spec, "segments": spec["segments"][:2]}).status_code == 400  # no sound
+    tl = client.post("/api/timelines", json=spec).json()
+    assert client.post(f"/api/timelines/{tl['id']}/build").status_code == 400  # files not sent yet
+    assert client.post(f"/api/timelines/{tl['id']}/files/0", content=data).json()["received"] == [0]
+    client.post(f"/api/timelines/{tl['id']}/build")
+    for _ in range(300):
+        s = client.get(f"/api/timelines/{tl['id']}").json()
+        if s["build"]["status"] in ("done", "error"):
+            break
+        _t.sleep(0.2)
+    assert s["build"]["status"] == "done", s["build"]["error"]
+    assert s["used"]["video"] == 2 and s["used"]["audio"] == 2
+    info = s["job"]["info"]
+    assert abs(info["duration"] - 9) < 0.1 and info["acodec"] and info["width"] * 1920 == info["height"] * 1080
+    # the rebuilt video is a job like any upload
+    assert client.get(f"/api/jobs/{s['job']['id']}").status_code == 200

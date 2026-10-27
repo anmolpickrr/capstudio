@@ -16,13 +16,13 @@ export async function api(path, { method = 'GET', body } = {}) {
   return data;
 }
 
-export function upload(file, onProgress) {
+export function upload(file, onProgress, url = '/api/jobs') {
   let xhr;
   const promise = new Promise((resolve, reject) => {
     xhr = new XMLHttpRequest();
-    xhr.open('POST', '/api/jobs');
+    xhr.open('POST', url);
     xhr.setRequestHeader('Content-Type', 'application/octet-stream');
-    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name));
+    xhr.setRequestHeader('X-Filename', encodeURIComponent(file.name || 'file'));
     xhr.upload.onprogress = (e) => e.lengthComputable && onProgress(e.loaded / e.total);
     xhr.onload = () => {
       if (xhr.status === 401) { location.href = '/login'; return; }

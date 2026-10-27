@@ -240,7 +240,7 @@ function openTimelineExport() {
   const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Add to timeline</span>', onclick: () => start() });
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Add to timeline'), h('p', {}, `Over “${clip.name}”, on the first empty video track above it.`)),
+      h('div', {}, h('h2', {}, 'Add to timeline'), h('p', {}, state.premiere.whole ? 'Over the whole sequence, on the first empty video track above every clip.' : `Over “${clip.name}”, on the first empty video track above it.`)),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'modal-body' },
       h('div', { class: 'specs' },
@@ -301,7 +301,7 @@ function openCompExport() {
   const go = h('button', { class: 'btn brand lg', type: 'button', html: '<span>Add to composition</span>', onclick: () => start() });
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Add to composition'), h('p', {}, `Above “${clip.name}”, in sync with it.`)),
+      h('div', {}, h('h2', {}, 'Add to composition'), h('p', {}, state.premiere.whole ? 'At the top of the composition, over its full length.' : `Above “${clip.name}”, in sync with it.`)),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'modal-body' },
       h('div', { class: 'specs' },
@@ -352,7 +352,7 @@ function openCompExport() {
         state.project.exported = true;
         emit('project');
         status.replaceChildren(h('div', { class: 'result ok' }, h('div', { class: 'result-row' },
-          h('div', {}, h('b', {}, 'Added above the layer'), h('br'), h('small', {}, `Saved as ${r.file}`)))));
+          h('div', {}, h('b', {}, state.premiere.whole ? 'Added at the top of the composition' : 'Added above the layer'), h('br'), h('small', {}, `Saved as ${r.file}`)))));
         toast('Captions added to the composition.', 'ok', 5000);
       }
     } catch (e) {

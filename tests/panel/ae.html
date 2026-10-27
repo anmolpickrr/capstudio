@@ -14,7 +14,18 @@
     (async () => {
       document.documentElement.setAttribute('data-site', location.origin);
       // vert.webm used from 0:03 to 0:09 of its file, at 0:02–0:08 of the comp
-      const fake = makeFakeAE([], {
+      // ?scene=timeline: a 12 s comp of two footage layers, one with its sound off, and a
+      // voice-over layer; otherwise one layer (vert.webm from 0:03) at 0:02–0:08
+      const timeline = new URLSearchParams(location.search).get('scene') === 'timeline';
+      const fake = makeFakeAE([], timeline ? {
+        name: 'Launch', width: 1080, height: 1920, fps: 25, duration: 12, projectPath: '/work/Reel.aep',
+        layers: [
+          { name: 'Logo', inPoint: 0, outPoint: 12 },
+          { name: 'voice-over', path: '/media/land.webm', startTime: 6, inPoint: 6, outPoint: 12, enabled: false },
+          { name: 'land.webm', path: '/media/land.webm', startTime: 5, inPoint: 5, outPoint: 12, audioEnabled: false },
+          { name: 'vert.webm', path: '/media/vert.webm', startTime: -1, inPoint: 0, outPoint: 6 },
+        ],
+      } : {
         name: 'Reel', width: 1080, height: 1920, fps: 25, duration: 20, projectPath: '/work/Reel.aep',
         layers: [
           { name: 'Logo', inPoint: 0, outPoint: 20 },

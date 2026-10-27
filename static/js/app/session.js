@@ -260,6 +260,74 @@ export async function ensureJob() {
 }
 
 // Premiere Pro panel: caption the clip selected in the timeline.
+// The whole sequence or composition from the Adobe panel: its clips and files are sent,
+// the server rebuilds the edit as one video (all voice-overs, music and video sound
+// mixed; the picture for the preview), and that video is captioned over its full
+// length. The captions are then placed over the whole edit.
+export async function captionTimeline() {
+  const { wholeTimeline } = await import('./premiere.js');
+  let t;
+  try { t = await wholeTimeline(); } catch (e) { return toast(e.message, 'error', 9000); }
+  const seq = t.sequence;
+  const name = `${(seq.name || 'Timeline').replace(/[\\/:*?"<>|]+/g, ' ').trim() || 'Timeline'}.mp4`;
+  const premiere = {
+    app: t.app, project: t.project, sequence: seq, whole: true, skipped: t.skipped,
+    clip: { name: seq.name, start: 0, end: t.duration, inPoint: 0, speed: 1, track: t.topTrack },
+    layer: t.app === 'aftereffects' ? { index: 0, name: '' } : undefined,
+  };
+  await leaveProject();
+  const id = ++runId;
+  firstStyle();
+  set({
+    project: { kind: 'upload', name, file: null, src: null, info: null, job: null, saveId: newId() },
+    phase: 'uploading', captions: [], transcript: null, selected: null, premiere,
+    progress: { upload: 0, transcribe: 0, message: 'Sending the timeline…' },
+  }, 'project');
+  clearHistory();
+  const status = (upload, message) => { state.progress.upload = upload; state.progress.message = message; emit('progress'); };
+  try {
+    const tl = await api('/api/timelines', { method: 'POST', body: {
+      name: seq.name || 'Timeline', width: seq.width, height: seq.height, fps: seq.fps, duration: t.duration,
+      files: t.files.map((f) => ({ name: f.name, size: f.size })), segments: t.clips,
+    } });
+    const total = t.files.reduce((n, f) => n + f.size, 0) || 1;
+    let sent = 0;
+    for (let i = 0; i < t.files.length; i++) {
+      const f = t.files[i];
+      uploadReq = upload(f, (p) => status(0.9 * (sent + p * f.size) / total,
+        `Sending ${t.files.length > 1 ? `${i + 1} of ${t.files.length} media files` : 'the media'}… ${Math.round(100 * (sent + p * f.size) / total)}%`),
+      `/api/timelines/${tl.id}/files/${i}`);
+      await uploadReq;
+      if (id !== runId) return;
+      sent += f.size;
+    }
+    await api(`/api/timelines/${tl.id}/build`, { method: 'POST' });
+    let job;
+    for (;;) {
+      await sleep(700);
+      if (id !== runId) return;
+      const s = await api(`/api/timelines/${tl.id}`);
+      if (s.build.status === 'error') throw new Error(s.build.error || 'The timeline couldn’t be put together.');
+      if (s.build.status === 'done') { job = s.job; premiere.used = s.used; break; }
+      status(0.9 + 0.1 * s.build.progress, `Putting the edit together (${t.clips.length} clips)… ${Math.round(s.build.progress * 100)}%`);
+    }
+    const res = await fetch(`/api/jobs/${job.id}/source`);
+    if (!res.ok) throw new Error('The rebuilt timeline couldn’t be loaded.');
+    const file = new File([await res.blob()], name, { type: 'video/mp4' });
+    if (id !== runId) return;
+    Object.assign(state.project, { file, src: URL.createObjectURL(file), job: job.id, info: { ...job.info, width: seq.width, height: seq.height } });
+    const saveId = state.project.saveId;
+    saveFile(saveId, file).then((ok) => { if (state.project?.saveId === saveId) state.project.fileSaved = ok; });
+    emit('project');
+    if (t.skipped) toast(`${t.skipped} item${t.skipped > 1 ? 's' : ''} without a media file (titles, graphics or nested sequences) ${t.skipped > 1 ? 'were' : 'was'} left out. Everything else is captioned.`, 'info', 8000);
+    await generate(id);
+  } catch (e) {
+    if (id !== runId) return;
+    set({ phase: 'empty', project: null }, 'project');
+    toast(e.message, 'error', 9000);
+  }
+}
+
 export async function captionSelectedClip() {
   const { selectedClip } = await import('./premiere.js');
   let picked;

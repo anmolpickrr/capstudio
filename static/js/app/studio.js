@@ -5,7 +5,7 @@ import { openExport } from './export.js';
 import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
-import { captionSelectedClip, engine, leaveProject, resumeProject, saveSessionNow, startUpload, syncEngine } from './session.js';
+import { captionSelectedClip, captionTimeline, engine, leaveProject, resumeProject, saveSessionNow, startUpload, syncEngine } from './session.js';
 import { inAE, inPremiere } from './premiere.js';
 import { listProjects } from './saved.js';
 import { enqueue, liveProgress, nextReady, remove as removeQueued, retry } from './queue.js';
@@ -140,26 +140,32 @@ function panelHome() {
       ls.map((l) => h('option', { value: l.id, disabled: l.unsupported ? true : null }, l.label)))));
   langSel.value = state.language;
   langSel.addEventListener('change', () => set({ language: langSel.value }));
-  const label = inAE ? 'Caption the selected layer' : 'Caption the selected clip';
-  const go = h('button', { class: 'btn brand lg', type: 'button', onclick: async () => {
-    go.disabled = true;
-    go.textContent = inAE ? 'Reading the layer…' : 'Reading the clip…';
-    await captionSelectedClip();
-    go.disabled = false;
-    go.textContent = label;
-  } }, label);
+  // the whole sequence / composition first; one clip or layer as the alternative
+  const busy = (btn, text, run) => async () => {
+    const was = btn.innerHTML;
+    btn.disabled = true; btn.textContent = text;
+    await run();
+    btn.disabled = false; btn.innerHTML = was;
+  };
+  const whole = h('button', { class: 'btn brand lg', type: 'button', html: `<span>${inAE ? 'Caption the whole composition' : 'Caption the whole sequence'}</span>` });
+  whole.onclick = busy(whole, inAE ? 'Reading the composition…' : 'Reading the sequence…', captionTimeline);
+  const one = h('button', { class: 'btn ghost', type: 'button', html: `<span>${inAE ? 'Caption the selected layer' : 'Caption the selected clip'}</span>` });
+  one.onclick = busy(one, inAE ? 'Reading the layer…' : 'Reading the clip…', captionSelectedClip);
   const steps = inAE
-    ? ['Select the footage layer in your composition.', 'Click below. Capstudio writes captions for the part of the layer you use.',
-      'Style them, then “Add to composition”: they arrive as editable layers in a precomp above the layer.']
-    : ['Select the clip in your timeline.', 'Click below. Capstudio writes captions for the part of the clip you use.',
-      'Style them, then “Add to timeline”: they land on the track above the clip.'];
+    ? ['Open the composition. Every footage layer counts: voice-overs, music and video sound are mixed, as they play.',
+      'Click “Caption the whole composition”. Captions follow the full length, across every cut.',
+      'Style them, then “Add to composition”: they arrive as editable layers at the top, over the full length.']
+    : ['Open the sequence. Every clip on every track counts: voice-overs, music and video sound are mixed, as they play.',
+      'Click “Caption the whole sequence”. Captions follow the full length, across every cut.',
+      'Style them, then “Add to timeline”: they land on an empty track above everything.'];
   return h('div', { class: 'panel-home' },
     h('div', { class: 'panel-home-card' },
       h('span', { class: 'kicker' }, inAE ? 'Capstudio for After Effects' : 'Capstudio for Premiere Pro'),
-      h('h1', {}, inAE ? 'Caption a layer' : 'Caption a clip'),
+      h('h1', {}, inAE ? 'Caption a composition' : 'Caption a sequence'),
       h('ol', { class: 'panel-steps' }, steps.map((t) => h('li', {}, t))),
-      h('label', { class: 'upload-options' }, h('span', {}, inAE ? 'Language in the layer' : 'Language in the clip'), langSel),
-      go,
+      h('label', { class: 'upload-options' }, h('span', {}, 'Language spoken'), langSel),
+      whole,
+      h('div', { class: 'panel-or' }, h('span', {}, 'or just one part'), one),
       recentList()));
 }
 

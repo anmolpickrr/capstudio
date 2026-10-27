@@ -3,7 +3,7 @@
 // use, for tests. A plain script: it defines makeFakeAE(installedFonts, scene) on the
 // global object. scene (optional): an open composition { name, width, height, fps,
 // duration, projectPath, layers: [{ name, path, startTime, inPoint, outPoint, stretch,
-// selected, timeRemap }] }, top layer first.
+// selected, timeRemap, hasAudio, enabled, audioEnabled }] }, top layer first.
 (function (root) {
   function makeFakeAE(installed, scene) {
     var alerts = [], comps = [], imported = [];
@@ -73,6 +73,7 @@
         var l = d.path ? active.layers.add(new FootageItem(d.path)) : active.layers.addShape();
         l.name = d.name; l.startTime = d.startTime || 0; l.inPoint = d.inPoint || 0; l.outPoint = d.outPoint || 0;
         l.stretch = d.stretch || 100; l.selected = !!d.selected; l.timeRemapEnabled = !!d.timeRemap;
+        l.hasVideo = !!d.path; l.hasAudio = !!d.path && d.hasAudio !== false; l.enabled = d.enabled !== false; l.audioEnabled = d.audioEnabled !== false;
       }
     }
 

@@ -1,6 +1,7 @@
 /* Capstudio: the Premiere Pro and After Effects side of the panel (ExtendScript, ES3).
- * Premiere Pro: Capstudio.selection() says which clip to caption, Capstudio.place()
- * puts the finished captions on the timeline. After Effects: CapstudioAE.selection()
+ * Premiere Pro: Capstudio.timeline() lists every clip in the open sequence (all video
+ * and audio tracks) to caption the whole edit, Capstudio.selection() says which one
+ * clip to caption instead, Capstudio.place() puts the finished captions on the timeline. After Effects: CapstudioAE.selection()
  * says which layer, CapstudioAE.build() adds the captions as editable layers in a
  * precomp (with CapstudioBuild from static/ae/capstudio-ae.jsx, which the panel loads
  * first), CapstudioAE.placeFootage() adds a transparent captions video instead.
@@ -78,6 +79,45 @@ var Capstudio = (function () {
     });
   }
 
+  function muted(track) {
+    try { return !!track.isMuted(); } catch (e) { return false; }
+  }
+
+  // Every clip that plays in the open sequence, for captioning the whole edit:
+  // sound from every unmuted audio track (voice-overs, music, the sound of video
+  // clips) and pictures from every visible video track, each with its media file,
+  // the part of it used, where it sits, its speed and track. Titles, graphics and
+  // nested sequences have no file and are counted as skipped.
+  function timeline() {
+    var seq = app.project.activeSequence, out = [], skipped = 0, end = 0, top = -1, kinds, k, t, c, tracks, track, it, path, speed;
+    if (!seq) return fail('Open the sequence to caption first.');
+    kinds = [['video', seq.videoTracks], ['audio', seq.audioTracks]];
+    for (k = 0; k < kinds.length; k++) {
+      tracks = kinds[k][1];
+      if (!tracks) continue;
+      for (t = 0; t < tracks.numTracks; t++) {
+        track = tracks[t];
+        if (muted(track)) continue;
+        for (c = 0; c < track.clips.numItems; c++) {
+          it = track.clips[c];
+          if (it.disabled) continue;
+          path = it.projectItem ? it.projectItem.getMediaPath() : '';
+          try { speed = it.getSpeed(); } catch (e) { speed = 1; }
+          if (!path || !(speed > 0)) { skipped++; continue; }
+          out.push({ kind: kinds[k][0], path: path, start: it.start.seconds, end: it.end.seconds, inPoint: it.inPoint.seconds, speed: speed, track: t });
+          if (it.end.seconds > end) end = it.end.seconds;
+          if (kinds[k][0] === 'video' && t > top) top = t;
+        }
+      }
+    }
+    if (!out.length) return fail('This sequence has no clips with media files to caption.');
+    return json({
+      ok: true, project: app.project.path,
+      sequence: { name: seq.name, width: seq.frameSizeHorizontal, height: seq.frameSizeVertical, fps: frameRate(seq) },
+      duration: end, topTrack: top, clips: out, skipped: skipped
+    });
+  }
+
   function norm(p) { return String(p || '').replace(/\\/g, '/').toLowerCase(); }
 
   function bin(name) {
@@ -120,7 +160,7 @@ var Capstudio = (function () {
     for (t = Math.max(0, above + 1); t < seq.videoTracks.numTracks; t++) {
       if (isFree(seq.videoTracks[t], start, end)) { track = t; break; }
     }
-    if (track < 0) return fail('There\'s no empty video track above the clip. Add one (Sequence > Add Tracks), then try again. The captions file is in the Capstudio bin.');
+    if (track < 0) return fail('There\'s no empty video track above ' + (start === 0 && above >= 0 ? 'the edit' : 'the clip') + '. Add one (Sequence > Add Tracks), then click Add to timeline again. The captions file is in the Capstudio bin.');
     seq.videoTracks[track].overwriteClip(item, start);
     if (srtPath) {
       srt = importInto(folder, srtPath);
@@ -132,7 +172,7 @@ var Capstudio = (function () {
     return json({ ok: true, track: track + 1, captions: captions });
   }
 
-  return { selection: selection, place: place, json: json };
+  return { selection: selection, timeline: timeline, place: place, json: json };
 }());
 
 var CapstudioAE = (function () {
@@ -170,6 +210,42 @@ var CapstudioAE = (function () {
     });
   }
 
+  // Every footage layer that plays in the open composition, for captioning the whole
+  // comp: sound from layers with audio switched on, pictures from visible ones, each
+  // with its file, the part used, where it sits, its speed and stacking order (track:
+  // higher is on top). Precomps, solids, text and time-remapped layers are skipped.
+  function timeline() {
+    var comp = activeComp(), out = [], skipped = 0, i, l, f, speed, start, end, n;
+    if (!comp) return fail('Open the composition to caption first.');
+    n = comp.numLayers;
+    for (i = 1; i <= n; i++) {
+      l = comp.layer(i);
+      f = fileOf(l);
+      if (!f || l.timeRemapEnabled || !(l.stretch > 0)) { if (l.hasAudio || f) skipped++; continue; }
+      speed = 100 / l.stretch;
+      start = Math.max(0, l.inPoint); end = Math.min(comp.duration, l.outPoint);
+      if (end <= start) continue;
+      if (l.hasVideo !== false && l.enabled !== false) out.push({ kind: 'video', path: f.fsName, start: start, end: end, inPoint: (start - l.startTime) * speed, speed: speed, track: n - i });
+      if (l.hasAudio && l.audioEnabled !== false) out.push({ kind: 'audio', path: f.fsName, start: start, end: end, inPoint: (start - l.startTime) * speed, speed: speed, track: n - i });
+    }
+    if (!out.length) return fail('This composition has no footage layers to caption.');
+    return json({
+      ok: true, project: app.project.file ? app.project.file.fsName : '',
+      sequence: { name: comp.name, width: comp.width, height: comp.height, fps: comp.frameRate },
+      duration: comp.duration, topTrack: n, clips: out, skipped: skipped
+    });
+  }
+
+  // The whole composition: at the top of the layer stack, over the comp's full length.
+  function onTop(comp, item) {
+    var l = comp.layers.add(item);
+    if (comp.numLayers > 1 && l.index !== 1) l.moveBefore(comp.layer(1));
+    l.startTime = 0;
+    l.inPoint = 0;
+    l.outPoint = comp.duration;
+    return l;
+  }
+
   // The captioned layer again (its index may have changed if layers were added).
   function target(comp, index, name) {
     var i;
@@ -192,14 +268,14 @@ var CapstudioAE = (function () {
   function build(D, index, name) {
     var comp = activeComp(), layer, pre, result, l;
     if (!comp) return fail('Open the composition with the captioned layer first.');
-    layer = target(comp, index, name);
-    if (!layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
+    layer = index ? target(comp, index, name) : null;
+    if (index && !layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
     if (typeof CapstudioBuild !== 'function') return fail('The panel couldn\'t load its layer builder. Close and reopen the panel.');
     app.beginUndoGroup('Capstudio captions');
     try {
       pre = app.project.items.addComp(D.name, D.width, D.height, 1, D.duration, D.fps);
       result = CapstudioBuild(D, pre);
-      l = above(comp, pre, layer, true);
+      l = layer ? above(comp, pre, layer, true) : onTop(comp, pre);
     } finally {
       app.endUndoGroup();
     }
@@ -209,17 +285,17 @@ var CapstudioAE = (function () {
   function placeFootage(path, index, name) {
     var comp = activeComp(), layer, item, l;
     if (!comp) return fail('Open the composition with the captioned layer first.');
-    layer = target(comp, index, name);
-    if (!layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
+    layer = index ? target(comp, index, name) : null;
+    if (index && !layer) return fail('The captioned layer isn\'t in the open composition. Open its composition and try again.');
     app.beginUndoGroup('Capstudio captions');
     try {
       item = app.project.importFile(new ImportOptions(new File(path)));
-      l = above(comp, item, layer, false);
+      l = layer ? above(comp, item, layer, false) : onTop(comp, item);
     } finally {
       app.endUndoGroup();
     }
     return json({ ok: true, name: l.name });
   }
 
-  return { selection: selection, build: build, placeFootage: placeFootage };
+  return { selection: selection, timeline: timeline, build: build, placeFootage: placeFootage };
 }());

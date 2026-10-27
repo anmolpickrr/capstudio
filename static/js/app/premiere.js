@@ -49,6 +49,14 @@ export async function selectedClip() {
   };
 }
 
+// The whole open sequence (Premiere) or composition (After Effects): every clip that
+// plays, on any track, and the media files they use (each once):
+// { app, project, sequence, duration, topTrack, skipped, clips: [{ file, kind, start, end, inPoint, speed, track }], files: [File] }
+export async function wholeTimeline() {
+  const d = await ask('capstudio:getTimeline');
+  return { ...d, files: d.files.map((f) => new File([f.bytes], f.name, { type: f.type })) };
+}
+
 // The source time span of the clip in the timeline.
 export function usedRange(p = state.premiere) {
   const c = p.clip;

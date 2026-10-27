@@ -3,6 +3,9 @@
 //   app → panel  {type: 'capstudio:getClip', id}
 //                → the selected clip (Premiere) or layer (After Effects), its sequence
 //                  or composition, and its media file's bytes
+//   app → panel  {type: 'capstudio:getTimeline', id}
+//                → every clip in the open sequence or composition (all tracks), where
+//                  each sits, and each media file's bytes, once
 //   app → panel  {type: 'capstudio:place', id, mov, movName, srt, start, end, above, project, index, name}
 //                → the captions video (and SRT) saved next to the project and placed
 //                  on the timeline, or above the layer
@@ -13,6 +16,7 @@
 (function () {
   var SITE = document.documentElement.getAttribute('data-site');
   var MAX_BYTES = 1.5e9;
+  var MAX_TIMELINE_BYTES = 4e9;
 
   // Premiere and the file system. Tests replace these with stand-ins.
   var host = window.__capstudioHost || (function () {
@@ -94,6 +98,32 @@
     });
   }
 
+  // The whole sequence or composition: its clips, with the files they use read once each.
+  function getTimeline(id) {
+    return call('timeline', []).then(function (tl) {
+      var paths = [], index = {}, total = 0;
+      tl.clips.forEach(function (c) {
+        if (!(c.path in index)) { index[c.path] = paths.length; paths.push(c.path); }
+        c.file = index[c.path];
+      });
+      paths.forEach(function (p) {
+        var size = host.size(p);
+        if (size > MAX_BYTES) throw new Error(host.basename(p) + ' is over 1.5 GB. Use a smaller copy of it, or caption one clip at a time.');
+        total += size;
+      });
+      if (total > MAX_TIMELINE_BYTES) throw new Error('The media in this timeline adds up to more than 4 GB. Caption it in parts (select a clip), or use smaller copies.');
+      return Promise.all(paths.map(function (p) { return host.read(p); })).then(function (all) {
+        var files = paths.map(function (p, i) {
+          var name = host.basename(p), ext = (name.split('.').pop() || '').toLowerCase();
+          return { name: name, type: TYPES[ext] || 'application/octet-stream', bytes: all[i] };
+        });
+        var clips = tl.clips.map(function (c) { return { file: c.file, kind: c.kind, start: c.start, end: c.end, inPoint: c.inPoint, speed: c.speed, track: c.track }; });
+        reply(id, true, { app: AE ? 'aftereffects' : 'premiere', project: tl.project, sequence: tl.sequence, duration: tl.duration,
+          topTrack: tl.topTrack, skipped: tl.skipped, clips: clips, files: files }, all);
+      });
+    });
+  }
+
   function folderFor(project) {
     var dir = host.join(project && /\.(prproj|aep|aepx)$/i.test(project) ? host.dirname(project) : host.documents(), 'Capstudio');
     host.mkdir(dir);
@@ -143,7 +173,7 @@
     if (e.origin !== SITE || e.source !== frame.contentWindow) return;
     var m = e.data || {};
     if (m === 'capstudio-ready') return show();
-    var job = m.type === 'capstudio:getClip' ? getClip(m.id) : m.type === 'capstudio:place' ? place(m.id, m)
+    var job = m.type === 'capstudio:getClip' ? getClip(m.id) : m.type === 'capstudio:getTimeline' ? getTimeline(m.id) : m.type === 'capstudio:place' ? place(m.id, m)
       : m.type === 'capstudio:aeBuild' ? aeBuild(m.id, m) : null;
     if (job) job.catch(function (err) { reply(m.id, false, err && err.message ? err.message : String(err)); });
   });
