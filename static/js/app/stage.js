@@ -8,13 +8,11 @@ import { editCaption } from './captionops.js';
 import { check, fitStyle, renderOverlay, zoneById, zoneFits, ZONES } from './safezones.js';
 import { emit, setStyle, state } from './store.js';
 import { $, fmtTime, h, toast } from './ui.js';
-import { svgIcon } from './showcase.js';
+import { phoneChrome, PLATFORMS, platformOf, SCREEN, videoBox } from './phone.js';
 import { typeBar } from './typebar.js';
 
 const VIEW_KEY = 'capstudio-preview-view';
 const inPanel = () => document.documentElement.classList.contains('in-panel');
-// what the top of the app's screen says, per safe-zone platform
-const SCREEN_TITLE = { 'ig-reels': 'Reels', 'ig-stories': '', 'fb-reels': 'Reels', 'fb-stories': '', 'yt-shorts': 'Shorts', whatsapp: 'Status', tiktok: 'For You' };
 
 export class Stage {
   constructor(root) {
@@ -111,23 +109,30 @@ export class Stage {
   fit() {
     const box = this.stage.getBoundingClientRect();
     if (!box.width || !box.height) return;
+    if (this.view === 'phone') return this.fitPhone(box);
+    Object.assign(this.device.style, { width: '', height: '' });
+    Object.assign(this.frame.style, { left: '', top: '' });
     const ar = this.W / this.H;
-    let bw = box.width, bh = box.height;
-    if (this.view === 'phone') {
-      // a 9:19.5 phone (bezel 10px) as tall as there's room for; the video fits its screen
-      const bezel = 10;
-      let ph = bh, pw = ph * (9 / 19.5);
-      if (pw > bw) { pw = bw; ph = pw * (19.5 / 9); }
-      Object.assign(this.device.style, { width: `${Math.floor(pw)}px`, height: `${Math.floor(ph)}px` });
-      bw = pw - bezel * 2; bh = ph - bezel * 2;
-    } else Object.assign(this.device.style, { width: '', height: '' });
-    let w = bw, hgt = w / ar;
-    if (hgt > bh) { hgt = bh; w = hgt * ar; }
+    let w = box.width, hgt = w / ar;
+    if (hgt > box.height) { hgt = box.height; w = hgt * ar; }
     this.frame.style.width = `${Math.floor(w)}px`;
     this.frame.style.height = `${Math.floor(hgt)}px`;
   }
 
-  // Frame or phone view; the phone shows the chosen platform's buttons (Reels by default).
+  // The phone at its real proportions, as tall as there's room for; one point of the
+  // screen is --u pixels. The video sits where the app puts it (filling its space).
+  fitPhone(box) {
+    const bezel = 0.033;                       // the frame around the screen, as a share of its width
+    const outerW = SCREEN.w * (1 + 2 * bezel), outerH = SCREEN.h + SCREEN.w * 2 * bezel;
+    const k = Math.min(box.width / outerW, box.height / outerH);
+    const u = k;                                // px per point
+    Object.assign(this.device.style, { width: `${Math.floor(outerW * u)}px`, height: `${Math.floor(outerH * u)}px`, padding: `${SCREEN.w * bezel * u}px` });
+    this.device.style.setProperty('--u', `${u}px`);
+    const v = videoBox(this.platform, this.W, this.H);
+    Object.assign(this.frame.style, { width: `${v.w * u}px`, height: `${v.h * u}px`, left: `${v.x * u}px`, top: `${v.y * u}px` });
+  }
+
+  // Frame or phone view; the phone shows the app picked under Safe zone (Reels by default).
   setView(v) {
     this.view = v;
     try { localStorage.setItem(VIEW_KEY, v); } catch { /* private mode */ }
@@ -139,24 +144,15 @@ export class Stage {
     const phone = this.view === 'phone';
     this.stage.classList.toggle('phone-view', phone);
     for (const b of this.viewButtons || []) b.setAttribute('aria-pressed', String(b.dataset.view === this.view));
-    const zone = zoneById(state.safeZone);
-    const platform = zone?.vertical ? zone.id : 'ig-reels';
-    const key = phone ? `${platform}|${this.W > this.H ? 'w' : 't'}` : '';
+    this.platform = platformOf(state.safeZone);
+    const caption = (state.project?.name || 'Your video').replace(/\.[^.]+$/, '');
+    const key = phone ? `${this.platform}|${caption}` : '';
     if (key === this.chromeKey) return;
     this.chromeKey = key;
     this.chrome.replaceChildren();
-    if (!phone) return;
-    const title = SCREEN_TITLE[platform] ?? 'Reels';
-    const action = (name, count) => h('span', { class: 'reel-action', html: `${svgIcon(name)}${count ? `<small>${count}</small>` : ''}` });
-    const story = platform.includes('stories') || platform === 'whatsapp';
-    this.chrome.append(
-      h('div', { class: 'du-top' }, story ? h('span', { class: 'du-bars' }, h('i'), h('i'), h('i')) : null,
-        h('b', {}, title), h('span', { html: svgIcon('camera') })),
-      story ? null : h('div', { class: 'du-actions' }, action('heart', '12.4K'), action('comment', '318'), action('share', '1.2K'), action('more')),
-      h('div', { class: 'du-meta' },
-        h('div', { class: 'reel-user' }, h('i', {}), h('b', {}, 'yourbrand'), story ? null : h('span', {}, 'Follow')),
-        story ? h('div', { class: 'du-reply' }, 'Send message') : h('p', {}, state.project?.name?.replace(/\.[^.]+$/, '') || 'Your video'),
-        story ? null : h('div', { class: 'reel-audio', html: `${svgIcon('music')}<span>Original audio</span>` })));
+    this.device.dataset.platform = phone ? PLATFORMS[this.platform].kind : '';
+    if (phone) this.chrome.append(phoneChrome(this.platform, { caption }));
+    this.fit();
   }
 
   async useProxy() {

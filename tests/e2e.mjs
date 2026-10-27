@@ -538,11 +538,14 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     await page.click('.typebar [aria-label="Near the top"]');
     const size1 = Number(await page.inputValue('.tb-num'));
     if (size1 !== size0 + 4) diffs.push(`type bar size ${size0} → ${size1}`);
-    // phone view: a 9:19.5 phone with the video fitted on its screen
+    // phone view: an iPhone screen (393 × 852 points) with Reels' interface; the video
+    // fills the space above the bottom navigation, as in the app
     await page.click('.view-seg [data-view="phone"]');
-    const ph = await page.evaluate(() => { const d = document.querySelector('.device').getBoundingClientRect(), f = document.querySelector('.frame').getBoundingClientRect();
-      return { ratio: d.height / d.width, inside: f.left >= d.left && f.right <= d.right && f.top >= d.top && f.bottom <= d.bottom, ui: !!document.querySelector('.du-actions') }; });
-    if (Math.abs(ph.ratio - 19.5 / 9) > 0.03 || !ph.inside || !ph.ui) diffs.push(`phone view ${JSON.stringify(ph)}`);
+    const ph = await page.evaluate(() => { const d = document.querySelector('.device-screen').getBoundingClientRect(), f = document.querySelector('.frame').getBoundingClientRect(),
+      nav = document.querySelector('.ph-nav').getBoundingClientRect();
+      return { ratio: d.height / d.width, fills: f.left <= d.left + 1 && f.right >= d.right - 1, aboveNav: Math.abs(f.bottom - nav.top) < 2 || f.bottom <= nav.top + 1,
+        ui: !!document.querySelector('.ph-ui.ph-reels .ph-side') && !!document.querySelector('.ph-status') }; });
+    if (Math.abs(ph.ratio - 852 / 393) > 0.02 || !ph.fills || !ph.aboveNav || !ph.ui) diffs.push(`phone view ${JSON.stringify(ph)}`);
 
     await page.click('.app-switch [data-app="editor"]');
     await page.waitForURL(/\/edit\?project=/, { timeout: 30000 });
