@@ -297,7 +297,7 @@ textarea.input { height: auto; padding: 8px 10px; resize: vertical; }
 .reel-progress { position: absolute; left: 0; right: 0; bottom: 0; height: 3px; background: rgba(255, 255, 255, .25); z-index: 1; }
 .reel-progress i { display: block; height: 100%; width: 38%; background: #fff; }
 
-.floats { position: absolute; inset: 0; pointer-events: none; }
+.floats { position: absolute; inset: 0; pointer-events: none; z-index: 3; } /* the cards overlap the phone's edges, in front of it */
 .float { position: absolute; animation: drift 9s ease-in-out infinite; will-change: transform; }
 @keyframes drift { 0%, 100% { translate: 0 0; } 50% { translate: 0 -12px; } }
 .float.left { right: calc(50% + var(--pw) / 2 - var(--overlap)); }
