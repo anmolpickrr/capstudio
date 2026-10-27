@@ -3,6 +3,7 @@
 //   app → panel  {type: 'capstudio:getClip', id}
 //                → the selected clip (Premiere) or layer (After Effects), its sequence
 //                  or composition, and its media file's bytes
+//   app → panel  {type: 'capstudio:hello', id} → { version }
 //   app → panel  {type: 'capstudio:getTimeline', id}
 //                → every clip in the open sequence or composition (all tracks), where
 //                  each sits, and each media file's bytes, once
@@ -173,6 +174,8 @@
     if (e.origin !== SITE || e.source !== frame.contentWindow) return;
     var m = e.data || {};
     if (m === 'capstudio-ready') return show();
+    // which version of the panel this is (the site checks before using newer features)
+    if (m.type === 'capstudio:hello') return reply(m.id, true, { version: 2 });
     var job = m.type === 'capstudio:getClip' ? getClip(m.id) : m.type === 'capstudio:getTimeline' ? getTimeline(m.id) : m.type === 'capstudio:place' ? place(m.id, m)
       : m.type === 'capstudio:aeBuild' ? aeBuild(m.id, m) : null;
     if (job) job.catch(function (err) { reply(m.id, false, err && err.message ? err.message : String(err)); });

@@ -53,6 +53,11 @@ export async function selectedClip() {
 // plays, on any track, and the media files they use (each once):
 // { app, project, sequence, duration, topTrack, skipped, clips: [{ file, kind, start, end, inPoint, speed, track }], files: [File] }
 export async function wholeTimeline() {
+  // panels installed before whole sequences existed don't answer this
+  const hello = await Promise.race([ask('capstudio:hello'), new Promise((r) => setTimeout(() => r(null), 3000))]);
+  if (!hello || hello.version < 2) {
+    throw new Error('Your Capstudio panel needs a quick update to caption whole sequences. Close Premiere Pro and After Effects, run the install line again (the “Adobe panel” card on the Capstudio website), then reopen. “Caption the selected clip” still works.');
+  }
   const d = await ask('capstudio:getTimeline');
   return { ...d, files: d.files.map((f) => new File([f.bytes], f.name, { type: f.type })) };
 }
