@@ -344,7 +344,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   try {
     await page.addInitScript(() => { window.__exportCodecs = ['vp9']; window.__exportAudioCodecs = ['opus']; });
     await page.goto(`${BASE}/edit`);
-    await page.click('.es-go .btn');
+    await page.click('.es-tpl[data-id="blank"]');
     await page.setInputFiles('.ed-lib input[type=file]', [MEDIA + 'vert_vp9.mp4', MEDIA + 'land_vp9.mp4', music]);
     await page.waitForFunction(() => document.querySelectorAll('.lib-card').length === 3, null, { timeout: 30000 });
     for (const name of ['vert_vp9.mp4', 'land_vp9.mp4', 'music.wav']) await page.locator(`.lib-card[title^="${name}"] .lib-add`).click({ force: true });
@@ -575,24 +575,23 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     await page.waitForSelector('.es-tpl');
     await page.click('.es-format[data-id="16x9"]');
     await page.click('.es-tpl[data-id="launch"]');
-    await page.click('.es-go .btn');
     await page.waitForFunction(() => window.__editor?.ed.project?.W === 1920, null, { timeout: 10000 });
     const launch = await page.evaluate(() => { const p = window.__editor.ed.project; return { W: p.W, H: p.H, bg: p.bg, texts: p.clips.filter((c) => c.type === 'text').length, onV1: p.clips.some((c) => c.track === p.tracks.filter((t) => t.type === 'video').at(-1).id) }; });
     if (launch.H !== 1080 || launch.bg !== '#6037D7' || launch.texts < 3 || launch.onV1) diffs.push(`starter ${JSON.stringify(launch)}`);
     // custom size
     await page.click('.ed-top a[aria-label="All projects"]');
     await page.waitForSelector('.es-tpl');
-    await page.click('.es-tpl[data-id="blank"]');
     await page.fill('.es-size input >> nth=0', '1234'); await page.press('.es-size input >> nth=0', 'Tab');
     await page.fill('.es-size input >> nth=1', '701'); await page.press('.es-size input >> nth=1', 'Tab');
-    await page.click('.es-go .btn');
+    if (await page.getAttribute('.es-format[data-id="custom"]', 'aria-checked') !== 'true') diffs.push('typing a size didn\'t pick Custom');
+    await page.click('.es-tpl[data-id="blank"]');
     await page.waitForFunction(() => window.__editor?.ed.project?.W === 1234, null, { timeout: 10000 });
     const custom = await page.evaluate(() => [window.__editor.ed.project.W, window.__editor.ed.project.H, window.__editor.ed.project.clips.length]);
     if (custom[1] !== 702 || custom[2] !== 0) diffs.push(`custom size ${custom}`);
     // import a video: the canvas matches it
     await page.click('.ed-top a[aria-label="All projects"]');
-    await page.waitForSelector('.es-quick input[type=file]', { state: 'attached' });
-    await page.setInputFiles('.es-quick input[type=file]', MEDIA + 'land_vp9.mp4');
+    await page.waitForSelector('.es-picker', { state: 'attached' });
+    await page.setInputFiles('.es-picker', MEDIA + 'land_vp9.mp4');
     await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'video'), null, { timeout: 30000 });
     const imp = await page.evaluate(() => { const p = window.__editor.ed.project; return [p.W, p.H, p.clips[0].start]; });
     if (imp[0] !== 1920 || imp[1] !== 1080 || imp[2] !== 0) diffs.push(`import a video ${imp}`);

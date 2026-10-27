@@ -50,7 +50,7 @@ function place(p, c, at) {
 
 export const STARTERS = [
   { id: 'blank', name: 'Blank', note: 'An empty timeline', build() {} },
-  { id: 'hook', name: 'Scroll-stopper', note: 'Big hook, then your clip', bg: '#111114', build(p) {
+  { id: 'hook', name: 'Scroll-stopper', note: 'A big opening hook', bg: '#111114', build(p) {
     text(p, 0, 6, { content: 'WAIT FOR IT', font: 'Bangers-Regular', size: 170, color: '#FFE14D', outline: 9, outlineColor: '#000000', shadow: 0, animIn: 'drop', animOut: 'pop' }, { y: -0.2 });
     text(p, 0.4, 5.6, { content: 'the one trick nobody tells you', font: 'Poppins-Bold', size: 58, shadow: 0.5, animIn: 'rise', animOut: 'fade' }, { y: -0.08 });
   } },
@@ -60,23 +60,23 @@ export const STARTERS = [
     shape(p, 0.4, 5.6, { kind: 'rect', w: 420, h: 12, fill: '#FFFFFF', radius: 6 }, { y: 0.1, animIn: 'slide-right' });
     text(p, 0.6, 5.4, { content: 'Live today on every store', font: 'Poppins-Bold', size: 52, shadow: 0, animIn: 'fade', animOut: 'fade' }, { y: 0.16 });
   } },
-  { id: 'quote', name: 'Quote card', note: 'Serif quote and a name', bg: '#F4EBDD', build(p) {
+  { id: 'quote', name: 'Quote card', note: 'Quote and a name', bg: '#F4EBDD', build(p) {
     text(p, 0, 6, { content: '“Make every\nsecond count.”', font: 'InstrumentSerif-Italic', size: 132, color: '#1A1A1A', lineHeight: 1.05, shadow: 0, animIn: 'fade', animOut: 'fade' }, { y: -0.04 });
     text(p, 0.6, 5.4, { content: '— ANMOL, FOUNDER', font: 'Montserrat-ExtraBold', size: 38, color: '#6037D7', shadow: 0, animIn: 'rise', animOut: 'fade' }, { y: 0.12 });
   } },
-  { id: 'sale', name: 'Sale promo', note: 'Offer, code and a deadline', bg: '#FF4D4D', build(p) {
+  { id: 'sale', name: 'Sale promo', note: 'Offer and a code', bg: '#FF4D4D', build(p) {
     text(p, 0, 6, { content: 'FLAT', font: 'Anton-Regular', size: 90, color: '#FFFFFF', shadow: 0, animIn: 'fade', animOut: 'fade' }, { y: -0.17 });
     text(p, 0.1, 5.9, { content: '50% OFF', font: 'Anton-Regular', size: 230, color: '#FFE14D', outline: 0, shadow: 0.3, animIn: 'pop', animOut: 'pop' }, { y: -0.05 });
     text(p, 0.5, 5.5, { content: 'Use code FASTRR', font: 'Poppins-Bold', size: 50, color: '#111111', bg: true, bgColor: '#FFFFFF', bgOpacity: 1, pad: 22, radius: 999, shadow: 0, animIn: 'rise', animOut: 'fade' }, { y: 0.1 });
     text(p, 0.8, 5.2, { content: 'Ends Sunday', font: 'Poppins-Bold', size: 40, color: '#FFFFFF', shadow: 0, animIn: 'fade', animOut: 'fade' }, { y: 0.18 });
   } },
-  { id: 'list', name: 'Top 3 list', note: 'A title and three points', bg: '#0B0B10', build(p) {
+  { id: 'list', name: 'Top 3 list', note: 'Title and 3 points', bg: '#0B0B10', build(p) {
     text(p, 0, 9, { content: '3 THINGS TO KNOW', font: 'Montserrat-ExtraBold', size: 76, color: '#A08BFF', shadow: 0, animIn: 'rise', animOut: 'fade' }, { y: -0.22 });
     ['1. Pay in one click', '2. No forms to fill', '3. Done in seconds'].forEach((line, i) => {
       text(p, 0.3 + i * 3, 2.7, { content: line, font: 'Poppins-Bold', size: 84, shadow: 0.4, animIn: 'pop', animOut: 'fade' }, { y: 0 });
     });
   } },
-  { id: 'lower', name: 'Talking head', note: 'Name and role, lower third', bg: '#1C1C22', build(p) {
+  { id: 'lower', name: 'Talking head', note: 'Name and role', bg: '#1C1C22', build(p) {
     text(p, 0.3, 5.7, { content: 'Anmol Sharma\nFounder, Fastrr', font: 'Poppins-Bold', size: 52, align: 'left', bg: true, bgColor: '#6037D7', bgOpacity: 1, pad: 28, radius: 18, shadow: 0, animIn: 'wipe', animOut: 'fade' },
       { x: -0.2, y: p.H > p.W ? 0.26 : 0.3 });
   } },

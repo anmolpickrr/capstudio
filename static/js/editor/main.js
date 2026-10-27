@@ -81,8 +81,8 @@ function starterPreview(starter) {
       p = newProject({ W, H });
       p.bg = setup.bg || starter.bg || '#000000';
       starter.build(p);
-      // fit the card's stage (about 140 × 180), drawn at twice that for sharpness
-      const k = Math.min(140 / W, 180 / H);
+      // fit the card's stage (about 132 × 180), drawn at twice that for sharpness
+      const k = Math.min(132 / W, 180 / H);
       cv.style.width = `${Math.round(W * k)}px`; cv.style.height = `${Math.round(H * k)}px`;
       cv.width = Math.max(2, Math.round(W * k * 2)); cv.height = Math.max(2, Math.round(H * k * 2));
       const fonts = p.clips.filter((c) => c.type === 'text').map((c) => fontById(c.text.font));
@@ -110,88 +110,95 @@ async function startScreen() {
   const paintAll = [];
   const repaint = () => { keepSetup(); paintAll.forEach((f) => f()); };
 
-  // canvas formats
-  const formatBtn = (f) => {
-    const ar = f.id === 'custom' ? null : `${f.W} / ${f.H}`;
-    const b = h('button', { type: 'button', class: 'es-format', role: 'radio', 'data-id': f.id,
-      onclick: () => { setup.format = f.id; repaint(); if (f.id === 'custom') customW.focus(); } },
-    h('span', { class: 'es-format-shape' }, h('i', { style: ar ? { aspectRatio: ar, [f.W >= f.H ? 'width' : 'height']: '30px' } : {}, class: f.id === 'custom' ? 'custom' : null })),
-    h('span', { class: 'es-format-text' },
-      h('b', {}, f.label, f.ratio ? h('em', {}, f.ratio) : null),
-      h('small', {}, f.note)));
+  // canvas: one row of formats (the shape, its ratio and what it's for)
+  const glyph = (f) => {
+    if (f.id === 'custom') return h('i', { class: 'custom' });
+    const big = 22, k = big / Math.max(f.W, f.H);
+    return h('i', { style: { width: `${Math.round(f.W * k)}px`, height: `${Math.round(f.H * k)}px` } });
+  };
+  const formats = h('div', { class: 'es-formats', role: 'radiogroup', 'aria-label': 'Canvas' }, FORMATS.map((f) => {
+    const b = h('button', { type: 'button', class: 'es-format', role: 'radio', 'data-id': f.id, title: f.note,
+      onclick: () => { setup.format = f.id; repaint(); if (f.id === 'custom') customW.select(); } },
+    h('span', { class: 'es-format-shape' }, glyph(f)),
+    h('b', {}, f.label),
+    h('small', {}, f.ratio || 'Any size'));
     paintAll.push(() => b.setAttribute('aria-checked', String(setup.format === f.id)));
     return b;
-  };
-  const groups = ['Social', 'Video', 'Custom'].map((g) => h('div', { class: 'es-format-group' },
-    h('span', { class: 'es-label' }, g), h('div', { class: 'es-formats', role: 'radiogroup', 'aria-label': `${g} formats` }, FORMATS.filter((f) => f.group === g).map(formatBtn))));
+  }));
 
+  // the canvas's settings, in one quiet strip: size (typing makes it custom), frame rate, background
   const num = (key, label) => {
-    const i = h('input', { class: 'input es-num', type: 'number', min: 64, max: 7680, step: 2, inputmode: 'numeric', 'aria-label': label });
+    const i = h('input', { class: 'es-num', type: 'number', min: 64, max: 7680, step: 2, inputmode: 'numeric', 'aria-label': label });
     i.addEventListener('focus', () => { if (setup.format !== 'custom') { const { W, H } = canvasSize(); setup.W = W; setup.H = H; setup.format = 'custom'; repaint(); } });
     i.addEventListener('change', () => { setup[key] = evenSize(i.value, setup[key]); repaint(); });
     paintAll.push(() => { if (document.activeElement !== i) i.value = canvasSize()[key]; });
     return i;
   };
   const customW = num('W', 'Width in pixels'), customH = num('H', 'Height in pixels');
-  const swap = h('button', { class: 'btn ghost sm icon-only', type: 'button', 'aria-label': 'Swap width and height', 'data-tip': 'Swap width and height', html: icon('ripple'),
+  const swap = h('button', { class: 'es-icon-btn', type: 'button', 'aria-label': 'Swap width and height', 'data-tip': 'Swap width and height', html: icon('ripple'),
     onclick: () => { const { W, H } = canvasSize(); Object.assign(setup, { format: 'custom', W: H, H: W }); repaint(); } });
-  const sizeRow = h('div', { class: 'es-size' }, customW, h('span', {}, '×'), customH, h('small', {}, 'px'), swap);
-
-  const fps = h('div', { class: 'seg es-fps', role: 'group', 'aria-label': 'Frame rate' }, FPS.map((v) => {
+  const fps = h('div', { class: 'es-seg', role: 'group', 'aria-label': 'Frame rate' }, FPS.map((v) => {
     const b = h('button', { type: 'button', onclick: () => { setup.fps = v; repaint(); } }, String(v));
     paintAll.push(() => b.setAttribute('aria-pressed', String(setup.fps === v)));
     return b;
   }));
   const bgs = h('div', { class: 'es-swatches', role: 'group', 'aria-label': 'Background colour' },
+    (() => {
+      const b = h('button', { type: 'button', class: 'es-swatch auto', 'aria-label': 'Each layout’s own background', 'data-tip': 'Each layout’s own', onclick: () => { setup.bg = null; repaint(); } });
+      paintAll.push(() => b.setAttribute('aria-pressed', String(!setup.bg)));
+      return b;
+    })(),
     BACKGROUNDS.map((c) => {
-      const b = h('button', { type: 'button', class: 'es-swatch', style: { background: c }, 'aria-label': c, onclick: () => { setup.bg = c; repaint(); } });
-      paintAll.push(() => b.setAttribute('aria-pressed', String(bgOf().toLowerCase() === c.toLowerCase())));
+      const b = h('button', { type: 'button', class: 'es-swatch', style: { background: c }, 'aria-label': `Background ${c}`, onclick: () => { setup.bg = c; repaint(); } });
+      paintAll.push(() => b.setAttribute('aria-pressed', String((setup.bg || '').toLowerCase() === c.toLowerCase())));
       return b;
     }),
     (() => {
-      const i = h('input', { type: 'color', class: 'es-swatch custom', 'aria-label': 'Any colour' });
+      const i = h('input', { type: 'color', class: 'es-swatch custom', 'aria-label': 'Any background colour', 'data-tip': 'Any colour' });
       i.addEventListener('input', () => { setup.bg = i.value; repaint(); });
       paintAll.push(() => { i.value = bgOf().length === 7 ? bgOf() : '#000000'; });
       return i;
     })());
+  const field = (label, ...kids) => h('div', { class: 'es-field' }, h('span', { class: 'es-field-label' }, label), ...kids);
+  const settings = h('div', { class: 'es-settings' },
+    field('Size', h('div', { class: 'es-size' }, customW, h('span', { class: 'es-x' }, '×'), customH, h('span', { class: 'es-unit' }, 'px'), swap)),
+    field('Frame rate', fps, h('span', { class: 'es-unit' }, 'fps')),
+    field('Background', bgs));
 
-  // starter layouts
-  const tpls = h('div', { class: 'es-tpls', role: 'radiogroup', 'aria-label': 'Start with' }, STARTERS.map((st) => {
+  // starting points: one click creates the project
+  const tpls = h('div', { class: 'es-tpls' }, STARTERS.map((st) => {
     const { cv, pv } = starterPreview(st);
-    const b = h('button', { type: 'button', class: 'es-tpl', role: 'radio', 'data-id': st.id,
-      onclick: () => { setup.starter = st.id; setup.bg = null; repaint(); },
-      ondblclick: () => { setup.starter = st.id; setup.bg = null; keepSetup(); create(); },
+    const blank = st.id === 'blank';
+    const b = h('button', { type: 'button', class: `es-tpl${blank ? ' blank' : ''}`, 'data-id': st.id, 'aria-label': `New project: ${st.name}`,
+      onclick: () => { setup.starter = st.id; keepSetup(); create(); },
       onmouseenter: () => pv.play(), onmouseleave: () => pv.pause(), onfocus: () => pv.play(), onblur: () => pv.pause() },
-    h('span', { class: 'es-tpl-stage' }, cv, st.id === 'blank' ? h('span', { class: 'es-tpl-blank', html: icon('plus') }) : null),
+    h('span', { class: 'es-tpl-stage' }, cv, blank ? h('span', { class: 'es-tpl-blank', html: icon('plus') }) : null,
+      h('span', { class: 'es-tpl-cta' }, blank ? 'Create blank' : 'Use layout')),
     h('span', { class: 'es-tpl-text' }, h('b', {}, st.name), h('small', {}, st.note)));
-    paintAll.push(() => { b.setAttribute('aria-checked', String(setup.starter === st.id)); pv.refresh(); });
+    paintAll.push(() => pv.refresh());
     return b;
   }));
+  const tplMeta = h('span', { class: 'es-sec-hint' }, 'Click one to create the project · hover to preview');
 
-  // summary and the main action
-  const summary = h('span', { class: 'es-summary' });
-  paintAll.push(() => {
-    const f = FORMATS.find((x) => x.id === setup.format) || FORMATS[0];
-    const { W, H } = canvasSize();
-    summary.replaceChildren(h('b', {}, f.id === 'custom' ? 'Custom' : `${f.label} ${f.ratio}`), ` · ${W} × ${H} · ${setup.fps} fps · ${starterById(setup.starter).name}`);
-  });
-  const createBtn = h('button', { class: 'btn brand lg', type: 'button', html: `<span>Create project</span>${icon('arrowRight')}`, onclick: () => create() });
-
-  const picker = h('input', { type: 'file', accept: 'video/*,image/*,audio/*,.mov,.mkv', multiple: true, hidden: true });
+  const picker = h('input', { type: 'file', accept: 'video/*,image/*,audio/*,.mov,.mkv', multiple: true, hidden: true, class: 'es-picker' });
   picker.addEventListener('change', () => { const files = [...picker.files]; picker.value = ''; if (files.length) fromFiles(files); });
 
   const recentGrid = h('div', { class: 'es-recent' }, recent.map((r) => {
     const dur = Math.max(0, ...r.clips.map(end));
     return h('div', { class: 'es-proj' },
       h('button', { class: 'es-proj-open', type: 'button', onclick: () => openWorkspace(r), 'aria-label': `Open ${r.name}` },
-        h('span', { class: 'es-proj-thumb', style: { aspectRatio: `${r.W} / ${r.H}` } },
-          r.thumb ? h('img', { src: r.thumb, alt: '' }) : h('span', { html: icon('editor') })),
-        h('span', { class: 'es-proj-text' }, h('b', {}, r.name), h('small', {}, `${r.W}×${r.H} · ${fmtTime(dur, 0)} · ${ago(r.savedAt)}`))),
-      h('button', { class: 'btn ghost sm icon-only es-proj-del', type: 'button', 'aria-label': `Delete ${r.name}`, 'data-tip': 'Delete', html: icon('trash'), onclick: async () => {
+        h('span', { class: 'es-proj-thumb' },
+          r.thumb ? h('img', { src: r.thumb, alt: '' }) : h('span', { html: icon('editor') }),
+          h('span', { class: 'es-proj-badge' }, `${r.W}×${r.H}`)),
+        h('span', { class: 'es-proj-text' }, h('b', {}, r.name), h('small', {}, `${fmtTime(dur, 0)} · edited ${ago(r.savedAt)}`))),
+      h('button', { class: 'es-icon-btn es-proj-del', type: 'button', 'aria-label': `Delete ${r.name}`, 'data-tip': 'Delete', html: icon('trash'), onclick: async () => {
         if (!confirm(`Delete “${r.name}” and its media from this browser?`)) return;
         await deleteProject(r.id); startScreen();
       } }));
   }));
+
+  const section = (title, meta, ...kids) => h('section', { class: 'es-sec' },
+    h('div', { class: 'es-sec-head' }, h('h2', {}, title), meta), ...kids);
 
   view.className = 'ed-start';
   view.replaceChildren(
@@ -199,36 +206,28 @@ async function startScreen() {
       h('a', { class: 'brand es-brand', href: '/', 'aria-label': 'Capstudio home', html: LOGO }),
       appSwitch('editor', { captions: () => goTo('/') }),
       h('span', { class: 'grow' }),
-      h('span', { class: 'es-local' }, 'Saved in this browser · works best in Chrome or Edge')),
-    h('div', { class: 'es-wrap' },
-      h('section', { class: 'es-hero' },
-        h('div', {},
-          h('span', { class: 'kicker' }, 'Video editor'),
-          h('h1', {}, 'Start a new video'),
-          h('p', { class: 'es-lead' }, 'Pick a canvas and a starting layout, or drop in a video and the canvas matches it. Cut, layer, animate, add music, transitions and captions, then export right here.')),
-        h('div', { class: 'es-quick' },
-          h('button', { class: 'es-quick-card primary', type: 'button', onclick: () => picker.click() },
-            h('span', { class: 'es-quick-icon', html: icon('upload') }),
-            h('span', {}, h('b', {}, 'Import a video'), h('small', {}, 'Canvas, size and frame rate match it'))),
-          h('a', { class: 'es-quick-card', href: '/', onclick: (e) => { e.preventDefault(); goTo('/'); } },
-            h('span', { class: 'es-quick-icon', html: icon('captions') }),
-            h('span', {}, h('b', {}, 'Caption a video first'), h('small', {}, 'Then bring it here with its captions'))),
-          picker)),
-      h('div', { class: 'es-grid' },
-        h('section', { class: 'es-panel es-setup', 'aria-label': 'Canvas' },
-          h('h2', {}, h('i', {}, '1'), 'Canvas'),
-          ...groups,
-          sizeRow,
-          h('div', { class: 'es-row' }, h('span', { class: 'es-label' }, 'Frame rate'), fps),
-          h('div', { class: 'es-row col' }, h('span', { class: 'es-label' }, 'Background'), bgs)),
-        h('section', { class: 'es-panel es-start-with', 'aria-label': 'Start with' },
-          h('h2', {}, h('i', {}, '2'), 'Start with', h('small', {}, 'Hover to play · double-click to start')),
-          tpls,
-          h('div', { class: 'es-go' }, summary, createBtn))),
-      recent.length ? h('section', { class: 'es-recent-wrap' }, h('h2', {}, 'Recent projects', h('small', {}, `${recent.length}`)), recentGrid) : null));
+      h('button', { class: 'btn es-import', type: 'button', html: `${icon('upload')}<span>Import video</span>`, onclick: () => picker.click() }),
+      picker),
+    h('main', { class: 'es-wrap' },
+      h('div', { class: 'es-title' },
+        h('h1', {}, 'New project'),
+        h('p', {}, 'Choose a canvas, then a starting point. Or drop a video anywhere here and the canvas matches it.')),
+      section('Canvas', null, formats, settings),
+      section('Start from', tplMeta, tpls),
+      recent.length ? section('Recent', h('span', { class: 'es-sec-meta' }, `${recent.length} in this browser`), recentGrid) : null,
+      h('p', { class: 'es-foot' }, 'Projects and their media are saved in this browser. Works best in Chrome or Edge on a computer.')));
   repaint();
   document.fonts?.ready.then(() => paintAll.forEach((f) => f()));
 }
+
+// a video dropped on the start screen starts a project from it
+addEventListener('dragover', (e) => { if (view.classList.contains('ed-start') && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); view.classList.add('dropping'); } });
+addEventListener('drop', (e) => {
+  if (!view.classList.contains('ed-start') || !e.dataTransfer.files.length) return;
+  e.preventDefault();
+  view.classList.remove('dropping');
+  fromFiles([...e.dataTransfer.files]);
+});
 
 const ago = (t) => {
   const m = Math.round((Date.now() - (t || 0)) / 60000);
@@ -397,11 +396,11 @@ function dropped(data, t, trackId) {
 
 // ---------------------------------------------------------------- files dropped anywhere
 
-addEventListener('dragover', (e) => { if (ed.project && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); view.classList.add('dropping'); } });
+addEventListener('dragover', (e) => { if (ed.project && view.classList.contains('ed-app') && [...e.dataTransfer.types].includes('Files')) { e.preventDefault(); view.classList.add('dropping'); } });
 addEventListener('dragleave', (e) => { if (!e.relatedTarget) view.classList.remove('dropping'); });
 addEventListener('drop', async (e) => {
   view.classList.remove('dropping');
-  if (!ed.project || !e.dataTransfer.files.length) return;
+  if (!ed.project || !view.classList.contains('ed-app') || !e.dataTransfer.files.length) return;
   e.preventDefault();
   const added = await library.importInto([...e.dataTransfer.files]);
   // straight onto the timeline when dropped there
