@@ -266,7 +266,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   const store = () => page.evaluate(async () => {
     const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
     return { emoji: state.style.emoji, emphasis: state.style.emphasis,
-      caps: state.captions.map((c) => ({ id: c.id, start: c.start, emoji: c.words.find((w) => w.emoji)?.emoji || null, emoji_at: c.words.findIndex((w) => w.emoji),
+      caps: state.captions.map((c) => ({ id: c.id, start: c.start, end: c.end, emoji: c.words.find((w) => w.emoji)?.emoji || null, emoji_at: c.words.findIndex((w) => w.emoji),
         stars: c.words.filter((w) => w.emph).length, words: c.words.map((w) => w.text) })) };
   });
   try {
@@ -289,7 +289,8 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     if (after.emoji !== 'above' || after.emphasis !== 'marked') diffs.push(`style emoji ${after.emoji}, emphasis ${after.emphasis}`);
     // drawn in the preview: the emoji's shapes are in the stage while its word is spoken
     const c0 = welcome;
-    await page.evaluate((t) => { document.querySelector('.frame video').currentTime = t; }, c0.start + 0.6);
+    // (just before the caption ends: its emoji has popped in by then, whatever the caption's lead-in)
+    await page.evaluate((t) => { document.querySelector('.frame video').currentTime = t; }, c0.end - 0.1);
     await page.waitForTimeout(600);
     const drawn = await page.evaluate(() => [...document.querySelectorAll('.frame svg path[fill="#EF9645"], .frame svg path[fill="#FFDC5D"]')]
       .filter((p) => p.closest('g[display="none"]') === null).length);
