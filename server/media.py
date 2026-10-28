@@ -80,7 +80,10 @@ def probe(path: str) -> dict:
 
 
 def extract_audio(src: str, dest: str, mp3: bool = False) -> None:
-    args = ["-vn", "-ac", "1", "-ar", "16000"]
+    # Many videos (phones, edit lists, AAC priming) start their sound a little after the
+    # picture. The sound is padded with silence from the video's start, so word times
+    # are the times they're heard in the video, not shifted early by that delay.
+    args = ["-vn", "-af", "aresample=async=1:first_pts=0", "-ac", "1", "-ar", "16000"]
     args += ["-c:a", "libmp3lame", "-b:a", "48k"] if mp3 else ["-c:a", "pcm_s16le"]
     _run(["ffmpeg", "-y", "-v", "error", "-i", src, *args, dest])
 

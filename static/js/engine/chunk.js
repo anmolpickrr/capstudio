@@ -1,6 +1,9 @@
 // Turning transcribed words into captions, and keeping word timings sensible
 // while editors change text and times.
 
+// how long before its first word a caption may appear
+export const LEAD_IN = 0.12;
+
 export const SENTENCE_END = /[.!?।॥。？！]["'”’)]*$/;
 
 let nextId = 1;
@@ -42,12 +45,17 @@ export function chunkWords(words, style, fits = () => true) {
     cur.push(w);
   }
   if (cur.length) groups.push(cur);
+  // each caption comes on a moment before its first word (as subtitles do), when the
+  // previous caption's words are over by then, so it's read as it's heard
+  const starts = groups.map((ws, i) => {
+    const prev = groups[i - 1];
+    return Math.min(ws[0].start, Math.max(0, prev ? prev[prev.length - 1].end : 0, ws[0].start - LEAD_IN));
+  });
   return groups.map((ws, i) => {
     const last = ws[ws.length - 1].end;
-    const next = groups[i + 1];
     let end = last + 0.3; // linger so captions don't flash off
-    if (next) end = Math.min(end, next[0].start);
-    return { id: uid(), start: ws[0].start, end: Math.max(end, last), words: ws.map((w) => ({ ...w })) };
+    if (i + 1 < groups.length) end = Math.min(end, starts[i + 1]);
+    return { id: uid(), start: starts[i], end: Math.max(end, last), words: ws.map((w) => ({ ...w })) };
   });
 }
 

@@ -237,10 +237,14 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     const s = await store();
     if ((await text()) !== before) throw new Error('captions not restored');
     if (s.templateId !== 'fastrr-marker') throw new Error(`style not restored (${s.templateId})`);
+    // renamed after resuming: the server's file downloads under the new name
+    await page.fill('#file-name', 'Renamed reel'); await page.press('#file-name', 'Enter');
     await page.click('#export-btn');
     await page.check('input[name="export-kind"][value="soft"]');
     await page.click('#export-dialog .btn.brand');
     await page.waitForSelector('#export-status a.btn', { timeout: 120000 });
+    const dlName = await page.getAttribute('#export-status a.btn', 'download');
+    if (!/^Renamed reel\.\w+$/.test(dlName || '')) throw new Error(`server export named ${dlName}`);
     if (missing.length) throw new Error(`missing files: ${[...new Set(missing)].slice(0, 3).join(', ')}`);
     if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
     console.log('✓ brand kit first, words to check and glossary suggestions, script switch with undo, autosave and resume (server export re-sends the video)');
@@ -506,7 +510,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
 // video, and going again reopens the same edit. Then the editor's start screen:
 // a format and a starter layout, a custom size, and "Import a video" matching it.
 {
-  const page = await browser.newPage({ viewport: { width: 1440, height: 900 } });
+  const page = await browser.newPage({ viewport: { width: 1440, height: 900 }, acceptDownloads: true });
   const errors = [];
   page.on('pageerror', (e) => errors.push(e.message));
   const projects = () => page.evaluate(() => new Promise((res) => {
@@ -547,6 +551,19 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
         ui: !!document.querySelector('.ph-ui.ph-reels .ph-side') && !!document.querySelector('.ph-status') }; });
     if (Math.abs(ph.ratio - 852 / 393) > 0.02 || !ph.fills || !ph.aboveNav || !ph.ui) diffs.push(`phone view ${JSON.stringify(ph)}`);
 
+    // renaming: in the top bar, then in the export dialog; downloads take the name
+    await page.fill('#file-name', 'Launch teaser'); await page.press('#file-name', 'Enter');
+    await page.click('#export-btn');
+    if (await page.inputValue('#export-name') !== 'Launch teaser') diffs.push(`export dialog name ${await page.inputValue('#export-name')}`);
+    await page.check('input[name="export-kind"][value="files"]');
+    let [dl] = await Promise.all([page.waitForEvent('download'), page.click('.ex-file:has-text("SRT")')]);
+    if (dl.suggestedFilename() !== 'Launch teaser.srt') diffs.push(`caption file named ${dl.suggestedFilename()}`);
+    await page.fill('#export-name', 'Final cut'); await page.press('#export-name', 'Enter');
+    [dl] = await Promise.all([page.waitForEvent('download'), page.click('.ex-file:has-text("SRT")')]);
+    if (dl.suggestedFilename() !== 'Final cut.srt' || await page.inputValue('#file-name') !== 'Final cut') diffs.push(`renamed in the dialog: ${dl.suggestedFilename()}`);
+    if (await page.getAttribute('label.ex-type:has(input[value="files"])', 'class') !== 'ex-type on') diffs.push('chosen kind not marked');
+    await page.click('#export-dialog [aria-label="Close"]');
+
     await page.click('.app-switch [data-app="editor"]');
     await page.waitForURL(/\/edit\?project=/, { timeout: 30000 });
     await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'captions'), null, { timeout: 60000 });
@@ -559,6 +576,12 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     await words.fill('2'); await words.press('Enter');
     const capsAfter = await page.evaluate(() => window.__editor.ed.project.clips.find((x) => x.type === 'captions').captions.length);
     if (capsAfter <= capsBefore) diffs.push(`max words didn't re-split (${capsBefore} → ${capsAfter})`);
+    // the editor's export names the file after the project, renamed there
+    await page.click('.ed-top .btn.brand');
+    if (await page.inputValue('#ed-export-name') !== 'Final cut') diffs.push(`editor export name ${await page.inputValue('#ed-export-name')}`);
+    await page.fill('#ed-export-name', 'Edit v2'); await page.press('#ed-export-name', 'Enter');
+    if (await page.evaluate(() => window.__editor.ed.project.name) !== 'Edit v2') diffs.push('editor export rename');
+    await page.click('#ed-dialog [aria-label="Close"]');
     // keyboard shortcuts and the play button's shape
     await page.keyboard.press('?');
     if (!(await page.locator('.ed-keys').isVisible())) diffs.push('shortcuts dialog');
@@ -567,7 +590,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     if (pb[0] !== pb[1]) diffs.push(`play button ${pb}`);
 
     await page.click('.app-switch [data-app="captions"]');
-    await page.waitForFunction(() => document.querySelector('#file-name')?.textContent === 'vert.webm' && !document.querySelector('#export-btn')?.disabled, null, { timeout: 60000 });
+    await page.waitForFunction(() => document.querySelector('#file-name')?.value === 'Final cut' && !document.querySelector('#export-btn')?.disabled, null, { timeout: 60000 });
     await page.click('.app-switch [data-app="editor"]');
     await page.waitForFunction(() => window.__editor?.ed.project?.clips.some((c) => c.type === 'captions'), null, { timeout: 60000 });
     const ps = await projects();
@@ -604,6 +627,53 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
   } catch (e) {
     await page.screenshot({ path: join(OUT, 'failure-switch.png') }).catch(() => {});
     fail('Captions ⇄ Editor', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// When Premiere didn't load the panel's host script (installed or updated while it
+// was open), the panel loads it itself and captions as usual.
+{
+  const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
+  const errors = [];
+  page.on('pageerror', (e) => errors.push(e.message));
+  try {
+    await page.goto(`${BASE}/__panel/?nohost=1`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('button:has-text("Caption the selected clip")').click();
+    await app.locator('#export-btn:not([disabled])').waitFor({ timeout: 120000 });
+    const loaded = await page.evaluate(() => ({ host: typeof window.Capstudio, files: window.__evalFiles || [] }));
+    if (loaded.host !== 'object' || loaded.files[0] !== 'C:/Users/me/AppData/Roaming/Adobe/CEP/extensions/com.fastrr.capstudio/host/host.jsx') throw new Error(`host script ${JSON.stringify(loaded)}`);
+    if (await app.locator('.panel-update').count()) throw new Error('update notice shown for a current panel');
+    if (errors.length) throw new Error(`page errors: ${errors.join('; ')}`);
+    console.log('✓ panel without its host script: loads it itself, then captions the clip');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-panel-nohost.png') }).catch(() => {});
+    fail('panel host script recovery', e.message.split('\n')[0]);
+  } finally {
+    await page.close();
+  }
+}
+
+// A panel installed before versions were reported: the first screen says how to
+// update it, and "Caption the whole sequence" explains instead of waiting forever.
+{
+  const page = await browser.newPage({ viewport: { width: 420, height: 860 } });
+  try {
+    await page.goto(`${BASE}/__panel/?scene=timeline&old=1`);
+    await page.waitForSelector('#loading.done', { state: 'attached', timeout: 30000 });
+    const app = page.frameLocator('iframe');
+    await app.locator('.panel-update:not([hidden])').waitFor({ timeout: 8000 });
+    await app.locator('button:has-text("Caption the whole sequence")').click();
+    await app.locator('.toast:has-text("needs a quick update")').waitFor({ timeout: 8000 });
+    await app.locator('.panel-update button').click();
+    await app.locator('#export-dialog .cmd-block').first().waitFor({ timeout: 5000 });
+    console.log('✓ older panel install: an update notice with the install steps; whole sequences explain the update');
+  } catch (e) {
+    await page.screenshot({ path: join(OUT, 'failure-panel-old.png') }).catch(() => {});
+    fail('older panel install', e.message.split('\n')[0]);
   } finally {
     await page.close();
   }
@@ -1080,7 +1150,7 @@ print(a[0] / n, sum(a[250:]) / n)`]).toString().trim().split(/\s+/).map(Number);
     const a = await st();
     if (a.name !== 'vert.webm' || !a.caps || a.tpl !== 'hormozi') throw new Error(`opened ${JSON.stringify(a)}`);
     await page.click('#next-video');
-    await page.waitForFunction(() => document.querySelector('#file-name')?.textContent === 'land.webm', null, { timeout: 30000 });
+    await page.waitForFunction(() => document.querySelector('#file-name')?.value === 'land', null, { timeout: 30000 });
     await page.waitForFunction(async () => {
       const { state } = await import(document.querySelector('script[type=module]').src.replace('main.js', 'store.js'));
       return !!state.project.job;

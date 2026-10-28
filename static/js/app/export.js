@@ -6,7 +6,7 @@ import { toASS, toSRT, toTXT, toVTT } from '../engine/index.js';
 import { ensureFonts } from '../engine/fonts.js';
 import { fontsFor } from '../engine/layout.js';
 import { api, sleep } from './api.js';
-import { ensureJob } from './session.js';
+import { chosenName, ensureJob, extOf, renameProject, stemOf } from './session.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { exportOverlay } from './overlayexport.js';
 import { exportAE } from './aeexport.js';
@@ -26,6 +26,22 @@ function baseName() { return (state.project?.name || 'video').replace(/\.[^.]+$/
 function dims() { const i = state.project.info; return [i.width, i.height]; }
 const spaced = () => state.transcript?.spaced ?? true;
 
+// The name every exported file takes (the video's name; renaming it here renames
+// the project too). `ext` shows what the main file will be called.
+function nameField(ext = () => extOf(state.project?.name)) {
+  const input = h('input', { id: 'export-name', class: 'ex-name-input', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'File name',
+    value: stemOf(state.project?.name) });
+  const suffix = h('span', { class: 'ex-name-ext' });
+  const commit = () => { if (!renameProject(input.value)) input.value = stemOf(state.project?.name); paint(); };
+  const paint = () => { suffix.textContent = ext(); };
+  input.addEventListener('change', commit);
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } e.stopPropagation(); });
+  paint();
+  const el = h('label', { class: 'ex-name' }, h('span', { class: 'ex-name-label' }, 'File name'), h('span', { class: 'ex-name-box' }, input, suffix));
+  el.paint = paint;
+  return el;
+}
+
 async function captionFile(kind) {
   const [W, H] = dims();
   await ensureFonts(fontsFor(state.captions, state.style));
@@ -34,6 +50,14 @@ async function captionFile(kind) {
   if (kind === 'vtt') download(`${b}.vtt`, toVTT(state.captions, state.style, W, H, spaced()), 'text/vtt');
   if (kind === 'ass') download(`${b}.ass`, toASS(state.captions, state.style, W, H, { spaced: spaced() }), 'text/x-ssa');
   if (kind === 'txt') download(`${b}.txt`, toTXT(state.captions, spaced()));
+}
+
+// Mark the label of the checked radio in a group (for its highlight; Adobe's panels
+// can't select a label by its input).
+function markChecked(root, name) {
+  const paint = () => root.querySelectorAll(`input[name="${name}"]`).forEach((i) => i.closest('label')?.classList.toggle('on', i.checked));
+  root.addEventListener('change', paint);
+  paint();
 }
 
 export function openExport() {
@@ -82,6 +106,10 @@ export function openExport() {
   const formats = formatsSection();
   const where = inBrowser ? 'Made on this computer: no upload, no waiting for the server. Keep this tab open while it runs.'
     : cfg.lowPower && canBurn ? 'Made on the server, about 3–6 minutes for a 30-second reel. Chrome or Edge make it much faster, on this computer.' : null;
+  // the main file's ending for each kind of export
+  const EXT = { burn: () => (info.vcodec === 'prores' ? extOf(state.project.name) : '.mp4'), soft: () => (extOf(state.project.name) === '.mkv' ? '.mkv' : extOf(state.project.name) === '.mov' ? '.mov' : '.mp4'),
+    formats: () => ' 9x16.mp4 …', overlay: () => ' captions.mov', ae: () => ' After Effects captions.zip', files: () => '.srt · .vtt · .ass · .txt' };
+  const fileName = nameField(() => (EXT[dlg?.querySelector('input[name="export-kind"]:checked')?.value] || EXT.burn)());
   const pane = (title, text, ...kids) => h('div', { class: 'ex-pane-body' }, h('div', { class: 'ex-pane-head' }, h('h3', {}, title), h('p', {}, text)), ...kids);
   const list = (items) => h('ul', { class: 'ex-points' }, items.map((t) => h('li', {}, t)));
   const panes = {
@@ -103,10 +131,10 @@ export function openExport() {
 
   dlg.replaceChildren(h('div', { class: 'modal ex-modal' },
     h('div', { class: 'modal-head' },
-      h('div', {}, h('h2', {}, 'Export'), h('p', {}, 'Same resolution, frame rate, audio and file name as your original.')),
+      h('div', {}, h('h2', {}, 'Export'), h('div', { class: 'ex-head-meta' }, h('p', {}, 'Same resolution, frame rate and audio as your original.'), specs)),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => dlg.close() })),
     h('div', { class: 'ex-body' }, rail, paneWrap),
-    h('div', { class: 'ex-foot' }, specs, h('span', { class: 'ex-keep', title: `Files are deleted from the server ${r.downloadGraceMin} min after you download.` },
+    h('div', { class: 'ex-foot' }, fileName, h('span', { class: 'ex-keep', title: `Files are deleted from the server ${r.downloadGraceMin} min after you download.` },
       `Deleted from the server ${r.downloadGraceMin} min after download`), go)));
   dlg.showModal();
   const paint = () => {
@@ -117,11 +145,13 @@ export function openExport() {
     const n = formats.querySelectorAll('.fmt-row:not(.off)').length;
     go.querySelector('span').textContent = kind === 'formats' ? `Export ${n} format${n === 1 ? '' : 's'}` : t.go || '';
     go.disabled = kind === 'formats' && !n;
+    fileName.paint();
     // the quality setting belongs to both video kinds
     if (kind === 'formats') panes.formats.insertBefore(qualityField, formats);
     else if (kind === 'burn') panes.burn.insertBefore(qualityField, panes.burn.children[1]);
   };
   dlg.querySelectorAll('input[name="export-kind"]').forEach((radio) => radio.addEventListener('change', paint));
+  markChecked(dlg, 'export-kind');
   formats.addEventListener('change', () => requestAnimationFrame(paint));
   paint();
 
@@ -244,6 +274,7 @@ export function openExport() {
   }
 
   function showDone(rr) {
+    if (!rr.href) rr = { ...rr, file: chosenName(rr.file) };
     const a = h('a', { class: 'btn brand', href: rr.href || `/api/jobs/${state.project.job}/download`, download: rr.file,
       html: '<span>Download</span>',
       onclick: () => {
@@ -280,6 +311,7 @@ function openTimelineExport() {
       h('div', { class: 'specs' },
         h('span', {}, sq.name), h('span', {}, `${sq.width}×${sq.height}`), h('span', {}, `${+sq.fps.toFixed(3)} fps`),
         h('span', {}, `${fmt(clip.start)} – ${fmt(clip.end)}`)),
+      nameField(() => ' captions.mov'),
       h('p', { class: 'note info' }, 'The captions (and the watermark, if it’s on) are drawn on a transparent layer at the sequence’s size and frame rate, saved in a Capstudio folder next to your project, and placed in a Capstudio bin.'),
       h('label', { class: 'switch' }, h('span', {}, 'Also add an editable caption track (plain text, for corrections in Premiere)'), editable),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Caption files'), files),
@@ -341,11 +373,13 @@ function openCompExport() {
       h('div', { class: 'specs' },
         h('span', {}, comp.name), h('span', {}, `${comp.width}×${comp.height}`), h('span', {}, `${+comp.fps.toFixed(3)} fps`),
         h('span', {}, `${fmt(clip.start)} – ${fmt(clip.end)}`)),
+      nameField(() => ' captions'),
       kinds,
       h('p', { class: 'note info' }, 'Files (the watermark, or the video) are saved in a Capstudio folder next to your project.'),
       status,
       h('div', { style: { display: 'flex', justifyContent: 'flex-end' } }, go))));
   dlg.showModal();
+  markChecked(dlg, 'ae-kind');
 
   async function start() {
     const kind = kinds.querySelector('input:checked').value;

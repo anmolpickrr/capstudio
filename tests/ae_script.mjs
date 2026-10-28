@@ -42,7 +42,13 @@ if (template) check('the template is ASCII', /^[\x00-\x7F]*$/.test(template));
 
 function run(code, installed) {
   const fake = makeFakeAE(installed);
-  vm.runInContext(code, vm.createContext({ ...fake.globals }));
+  const ctx = vm.createContext({ ...fake.globals });
+  // ExtendScript is ES3: take away what it doesn't have, so using it fails here too
+  vm.runInContext(`(function (lists) { for (var i = 0; i < lists.length; i++) for (var j = 0; j < lists[i][1].length; j++) delete lists[i][0][lists[i][1][j]]; }(
+    [[Array.prototype, ['indexOf', 'forEach', 'map', 'filter', 'some', 'every', 'reduce', 'find', 'includes', 'at']],
+     [String.prototype, ['trim', 'padStart', 'includes', 'startsWith', 'endsWith', 'repeat']], [Object, ['keys', 'assign', 'create']],
+     [Array, ['isArray']], [Date, ['now']], [this, ['JSON', 'Promise', 'Map', 'Set']]]))`, ctx);
+  vm.runInContext(code, ctx);
   return fake;
 }
 

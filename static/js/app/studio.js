@@ -5,7 +5,7 @@ import { openExport } from './export.js';
 import { setSeek } from './panels/captions.js';
 import { PANELS, renderPanel } from './panels/index.js';
 import { setReplay } from './panels/motion.js';
-import { captionSelectedClip, captionTimeline, engine, leaveProject, resumeProject, saveSessionNow, startUpload, syncEngine } from './session.js';
+import { captionSelectedClip, captionTimeline, renameProject, stemOf, engine, leaveProject, resumeProject, saveSessionNow, startUpload, syncEngine } from './session.js';
 import { inAE, inPremiere } from './premiere.js';
 import { listProjects } from './saved.js';
 import { enqueue, liveProgress, nextReady, remove as removeQueued, retry } from './queue.js';
@@ -158,8 +158,15 @@ function panelHome() {
     : ['Open the sequence. Every clip on every track counts: voice-overs, music and video sound are mixed, as they play.',
       'Click “Caption the whole sequence”. Captions follow the full length, across every cut.',
       'Style them, then “Add to timeline”: they land on an empty track above everything.'];
+  // an older install of the panel: say how to update it (whole sequences need it)
+  const update = h('div', { class: 'panel-update', hidden: true },
+    h('b', {}, 'Update the Capstudio panel'),
+    h('span', {}, 'This install is older than the website. Run the install line again (about a minute) to caption whole sequences and get the latest fixes.'),
+    h('button', { class: 'btn sm', type: 'button', onclick: openPanelHelp }, 'Show me how'));
+  import('./premiere.js').then(({ panelVersion, PANEL_VERSION }) => panelVersion().then((v) => { update.hidden = v >= PANEL_VERSION; }));
   return h('div', { class: 'panel-home' },
     h('div', { class: 'panel-home-card' },
+      update,
       h('span', { class: 'kicker' }, inAE ? 'Capstudio for After Effects' : 'Capstudio for Premiere Pro'),
       h('h1', {}, inAE ? 'Caption a composition' : 'Caption a sequence'),
       h('ol', { class: 'panel-steps' }, steps.map((t) => h('li', {}, t))),
@@ -379,6 +386,19 @@ function previewStyleChange() {
 
 // ---------------------------------------------------------------- editor
 
+// The video's name, edited in place: what it's saved and exported as.
+function nameInput() {
+  const input = h('input', { id: 'file-name', class: 'file-name', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'File name' });
+  const commit = () => { if (!renameProject(input.value)) input.value = stemOf(state.project?.name); };
+  input.addEventListener('change', commit);
+  input.addEventListener('keydown', (e) => {
+    if (e.key === 'Enter') { e.preventDefault(); input.blur(); }
+    if (e.key === 'Escape') { input.value = stemOf(state.project?.name); input.blur(); }
+    e.stopPropagation(); // typing a name isn't a shortcut
+  });
+  return input;
+}
+
 const TOOLS = [
   ['templates', 'Styles', 'templates'],
   ['text', 'Text', 'text'],
@@ -402,7 +422,7 @@ function editor() {
 
   const bar = h('div', { class: 'projectbar' },
     h('div', { class: 'file-chip' }, h('span', { class: 'thumb', id: 'file-thumb' }),
-      h('div', {}, h('b', { id: 'file-name' }), h('small', { id: 'file-specs' }))),
+      h('div', {}, nameInput(), h('small', { id: 'file-specs' }))),
     h('div', { class: 'flow', id: 'flow' }),
     h('div', { class: 'bar-actions' },
       h('button', { class: 'btn ghost icon-only', id: 'undo', 'data-tip': 'Undo (Ctrl+Z)', 'data-tip-pos': 'below', html: icon('undo'), onclick: () => undo() }),
@@ -509,7 +529,9 @@ let lastTool = null;
 function refreshEditor(what) {
   const p = state.project;
   if (!p) return;
-  $('#file-name').textContent = p.name;
+  const nameEl = $('#file-name');
+  if (nameEl && document.activeElement !== nameEl) nameEl.value = stemOf(p.name);
+  if (nameEl) nameEl.title = `${p.name}: click to rename. Exports and the saved project use this name.`;
   const info = p.info;
   $('#file-specs').textContent = info
     ? `${info.width}×${info.height} · ${info.fps ? `${+info.fps.toFixed(2)} fps` : 'VFR'} · ${fmtDur(info.duration)}`

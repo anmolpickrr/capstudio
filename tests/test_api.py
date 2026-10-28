@@ -255,3 +255,22 @@ def test_timeline_rebuilt_from_its_clips(client, video):
     assert abs(info["duration"] - 9) < 0.1 and info["acodec"] and info["width"] * 1920 == info["height"] * 1080
     # the rebuilt video is a job like any upload
     assert client.get(f"/api/jobs/{s['job']['id']}").status_code == 200
+
+
+def test_extracted_sound_keeps_its_place_against_the_picture(tmp_path):
+    """A video whose sound starts 0.5 s after the picture: the sound sent for captions
+    is padded from the video's start, so a beep heard at 1.5 s is at 1.5 s, not 1.0 s."""
+    import struct
+    import wave
+    from server import media
+    base, off, wav = tmp_path / "base.mp4", tmp_path / "off.mp4", tmp_path / "a.wav"
+    subprocess.run(["ffmpeg", "-v", "error", "-f", "lavfi", "-i", "color=c=black:s=160x120:r=25:d=4", "-f", "lavfi",
+                    "-i", "aevalsrc='if(between(t,1,1.1),sin(6283*t),0)':s=48000:d=3", "-map", "0:v", "-map", "1:a",
+                    "-c:v", "libx264", "-c:a", "aac", str(base)], check=True)
+    subprocess.run(["ffmpeg", "-v", "error", "-i", str(base), "-itsoffset", "0.5", "-i", str(base), "-map", "0:v", "-map", "1:a",
+                    "-c", "copy", str(off)], check=True)
+    media.extract_audio(str(off), str(wav))
+    w = wave.open(str(wav))
+    s = struct.unpack("<%dh" % w.getnframes(), w.readframes(w.getnframes()))
+    beep = next(i for i, v in enumerate(s) if abs(v) > 3000) / w.getframerate()
+    assert abs(beep - 1.5) < 0.06, beep

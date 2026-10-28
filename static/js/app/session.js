@@ -62,7 +62,7 @@ export async function startUpload(file, premiere = null) {
   const id = ++runId;
   firstStyle();
   set({
-    project: { kind: 'upload', name: file.name, file, src: URL.createObjectURL(file), info: null, job: null, saveId: newId() },
+    project: { kind: 'upload', name: file.name, source: file.name, file, src: URL.createObjectURL(file), info: null, job: null, saveId: newId() },
     phase: 'uploading', captions: [], transcript: null, selected: null, premiere,
     progress: { upload: 0, transcribe: 0, message: 'Uploading your video…' },
   }, 'project');
@@ -158,6 +158,30 @@ export async function leaveProject({ beacon = false } = {}) {
   }
 }
 
+// ---------------------------------------------------------------- name
+
+// The name the video is saved and exported under (the extension stays the video's own).
+export const stemOf = (name) => String(name || 'video').replace(/\.[^.]*$/, '');
+export const extOf = (name) => (/\.[^./\\]+$/.exec(String(name || '')) || [''])[0];
+export function cleanStem(text) {
+  return String(text || '').replace(/[\u0000-\u001f\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().replace(/^\.+/, '').slice(0, 120);
+}
+export function renameProject(text) {
+  const p = state.project;
+  const stem = cleanStem(text);
+  if (!p || !stem || stem === stemOf(p.name)) return false;
+  p.name = `${stem}${extOf(p.name) || extOf(p.source) || '.mp4'}`;
+  emit('project');
+  return true;
+}
+// A file named by the server (after the uploaded file) under the name chosen here.
+export function chosenName(serverFile) {
+  const p = state.project;
+  if (!p || !serverFile) return serverFile;
+  const from = stemOf(p.source || p.name), to = stemOf(p.name);
+  return from !== to && serverFile.startsWith(from) ? to + serverFile.slice(from.length) : serverFile;
+}
+
 // ---------------------------------------------------------------- autosave & resume
 
 // What's saved for a project; the video is stored separately, once.
@@ -165,7 +189,7 @@ function snapshot() {
   const p = state.project;
   const { words, ...transcript } = state.transcript || {}; // words live in the captions
   return {
-    id: p.saveId, name: p.name, size: p.file?.size || 0, type: p.file?.type || '', info: p.info, job: p.job,
+    id: p.saveId, name: p.name, source: p.source || p.name, size: p.file?.size || 0, type: p.file?.type || '', info: p.info, job: p.job,
     captions: state.captions, style: state.style, templateId: state.templateId,
     transcript: state.transcript ? transcript : null, language: state.language, vocabulary: state.vocabulary,
     thumb: state.frameThumb || p.thumb || null, peaks: p.peaks || null, premiere: state.premiere || null,
@@ -206,7 +230,7 @@ export async function resumeProject(id, pickFile) {
   if (!file) {
     file = await pickFile?.(record);
     if (!file) return;
-    if (file.name !== record.name || file.size !== record.size) {
+    if (file.name !== (record.source || record.name) || file.size !== record.size) {
       return toast(`That isn’t the same video. Pick “${record.name}” to continue.`, 'error', 8000);
     }
     saveFile(id, file);
@@ -214,7 +238,7 @@ export async function resumeProject(id, pickFile) {
   await leaveProject();
   runId++;
   set({
-    project: { kind: 'upload', name: record.name, file, src: URL.createObjectURL(file), info: record.info, job: null,
+    project: { kind: 'upload', name: record.name, source: record.source || record.name, file, src: URL.createObjectURL(file), info: record.info, job: null,
       savedJob: record.job, saveId: id, saved: true, fileSaved: true, peaks: record.peaks, thumb: record.thumb,
       exported: !!record.exported },
     phase: 'editing', captions: record.captions, style: record.style, templateId: record.templateId,
@@ -279,7 +303,7 @@ export async function captionTimeline() {
   const id = ++runId;
   firstStyle();
   set({
-    project: { kind: 'upload', name, file: null, src: null, info: null, job: null, saveId: newId() },
+    project: { kind: 'upload', name, source: name, file: null, src: null, info: null, job: null, saveId: newId() },
     phase: 'uploading', captions: [], transcript: null, selected: null, premiere,
     progress: { upload: 0, transcribe: 0, message: 'Sending the timeline…' },
   }, 'project');

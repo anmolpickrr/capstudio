@@ -77,6 +77,39 @@ const span = (preset) => Math.max(0, ...['opacity', 'scale', 'dy', 'blur']
 
 export function presetDuration(preset, speed = 1) { return span(preset) / speed; }
 
+// Staying in sync with speech: an entrance's text has to be readable (85% opaque)
+// by the time its word is spoken, so entrances start early by that much (or, when
+// there's no room before them, skip that much of their beginning) and their motion
+// settles just after. Highlights and karaoke sweeps follow the words exactly.
+const READY = 0.85;
+const readyCache = new Map();
+export function readyTime(preset, speed = 1) {
+  const keys = preset?.opacity;
+  if (!keys) return 0;
+  const id = `${preset.label}|${speed}`;
+  if (!readyCache.has(id)) {
+    const k = scaled(keys, speed);
+    let at = 0;
+    for (let t = 0; t <= k[k.length - 1][0] + 1e-9; t += 0.002) if (track(k, t) >= READY) { at = t; break; }
+    readyCache.set(id, Math.min(at, 0.25));
+  }
+  return readyCache.get(id);
+}
+const firstWordStart = (c) => (c.words.length ? c.words[0].start : c.start);
+// how much of the caption's entrance is skipped, so it's readable when its first word starts
+export function entranceSkip(style, caption) {
+  const pin = CAPTION_IN[style.animIn] || CAPTION_IN.none;
+  return Math.max(0, readyTime(pin, style.speed || 1) - Math.max(0, firstWordStart(caption) - caption.start));
+}
+// the same for word i's own entrance (words revealed as they're spoken)
+// (target: when the word should be readable: as it's spoken, or its turn in a cascade)
+const cascadeAt = (style, caption, i) => caption.start + (i * CASCADE_GAP) / (style.speed || 1);
+function wordSkip(style, caption, i, at) {
+  const ready = readyTime(WORD_IN[style.wordIn] || WORD_IN.none, style.speed || 1);
+  const target = style.reveal ? caption.words[i].start : style.cascade ? cascadeAt(style, caption, i) : at;
+  return Math.max(0, ready - Math.max(0, target - at));
+}
+
 // Caption-level motion at time t: opacity, scale, vertical shift (fraction of
 // video height) and extra blur.
 export function groupMotion(style, caption, t) {
@@ -94,15 +127,19 @@ export function groupMotion(style, caption, t) {
       if (k === 'opacity' || k === 'scale') r[k] *= v; else r[k] += v;
     }
   };
-  apply(pin, rel);
+  apply(pin, rel + entranceSkip(style, caption));
   if (outLen > 0 && toEnd < outLen) apply(pout, outLen - toEnd);
   return r;
 }
 
 // When word i first appears (null = together with the caption).
 export function wordAppears(style, caption, i) {
-  if (style.reveal) return i === 0 ? caption.start : caption.words[i].start;
-  if (style.cascade) return caption.start + (i * CASCADE_GAP) / (style.speed || 1);
+  if (style.reveal) {
+    if (i === 0) return caption.start;
+    const ready = readyTime(WORD_IN[style.wordIn] || WORD_IN.none, style.speed || 1);
+    return Math.max(caption.start, caption.words[i].start - ready);
+  }
+  if (style.cascade) return Math.max(caption.start, cascadeAt(style, caption, i) - readyTime(WORD_IN[style.wordIn] || WORD_IN.none, style.speed || 1));
   return null;
 }
 
@@ -114,7 +151,7 @@ export function wordMotion(style, caption, i, t) {
     if (t < at) return { ...r, visible: false, opacity: 0 };
     const preset = WORD_IN[style.wordIn] || WORD_IN.none;
     const speed = style.speed || 1;
-    const rel = t - at;
+    const rel = t - at + wordSkip(style, caption, i, at);
     const o = track(scaled(preset.opacity, speed), rel);
     const s = track(scaled(preset.scale, speed), rel);
     const d = track(scaled(preset.dy, speed), rel);
@@ -159,8 +196,9 @@ export function breakpoints(style, caption) {
   const pin = CAPTION_IN[style.animIn] || CAPTION_IN.none;
   const pout = CAPTION_OUT[style.animOut] || CAPTION_OUT.none;
   const dur = caption.end - caption.start;
+  const skip = entranceSkip(style, caption);
   for (const k of ['opacity', 'scale', 'dy', 'blur']) {
-    for (const [t] of pin[k] || []) pts.add(caption.start + t / speed);
+    for (const [t] of pin[k] || []) pts.add(caption.start + t / speed - skip);
   }
   const outLen = Math.min(presetDuration(pout, speed), dur / 3);
   if (outLen > 0) pts.add(caption.end - outLen);
@@ -169,7 +207,8 @@ export function breakpoints(style, caption) {
     if (at !== null) {
       pts.add(at);
       const wp = WORD_IN[style.wordIn] || WORD_IN.none;
-      pts.add(at + presetDuration(wp, speed));
+      const ws = wordSkip(style, caption, i, at);
+      for (const k of ['opacity', 'scale', 'dy', 'blur']) for (const [t] of wp[k] || []) pts.add(at + t / speed - ws);
     }
     const { start, until, sweepEnd } = wordTiming(caption, i, start0(w));
     pts.add(start); pts.add(until); pts.add(sweepEnd);
@@ -187,7 +226,7 @@ const start0 = (w) => w.start;
 export function animating(style, caption, t) {
   const speed = style.speed || 1;
   const pin = CAPTION_IN[style.animIn] || CAPTION_IN.none;
-  if (t - caption.start < presetDuration(pin, speed)) return true;
+  if (t - caption.start + entranceSkip(style, caption) < presetDuration(pin, speed)) return true;
   if (emojiOn(style, caption)) {
     const at = emojiAppears(caption);
     if (t >= at && t - at < presetDuration(EMOJI_IN, speed)) return true;
@@ -197,7 +236,7 @@ export function animating(style, caption, t) {
   if (outLen > 0 && caption.end - t < outLen) return true;
   for (let i = 0; i < caption.words.length; i++) {
     const at = wordAppears(style, caption, i);
-    if (at !== null && t >= at && t - at < presetDuration(WORD_IN[style.wordIn] || WORD_IN.none, speed)) return true;
+    if (at !== null && t >= at && t - at + wordSkip(style, caption, i, at) < presetDuration(WORD_IN[style.wordIn] || WORD_IN.none, speed)) return true;
     if ((style.hlScale || 1) !== 1 && style.highlight !== 'none') {
       const { start, until } = wordTiming(caption, i, t);
       const g = HL_TWEEN / speed;

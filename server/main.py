@@ -218,10 +218,11 @@ async def lifespan(_app: FastAPI):
 app = FastAPI(title="Caption Panel", docs_url=None, redoc_url=None, lifespan=lifespan)
 app.middleware("http")(auth.guard)
 # Added last so it runs first: the guard needs the session.
+# Over HTTPS the cookie is also sent when the site is shown inside the Adobe panel (a
+# page within another page), so signing in works there; plain HTTP keeps "lax".
+_HTTPS = bool(os.environ.get("SPACE_HOST") or os.environ.get("RENDER_EXTERNAL_URL") or os.environ.get("PUBLIC_URL", "").startswith("https"))
 app.add_middleware(SessionMiddleware, secret_key=auth.SESSION_SECRET, session_cookie="caption_panel",
-                   max_age=14 * 24 * 3600, same_site="lax",
-                   https_only=bool(os.environ.get("SPACE_HOST") or os.environ.get("RENDER_EXTERNAL_URL")
-                                   or os.environ.get("PUBLIC_URL", "").startswith("https")))
+                   max_age=14 * 24 * 3600, same_site="none" if _HTTPS else "lax", https_only=_HTTPS)
 app.include_router(auth.router)
 
 

@@ -32,7 +32,7 @@ const fmtDefault = (v) => (Math.round(v * 100) / 100).toString();
 export function slider(ctrls, { label, key, min, max, step = 1, format = fmtDefault, disabled }) {
   const input = h('input', { type: 'range', class: 'range', min, max, step, 'aria-label': label });
   const value = h('span', { class: 'value' });
-  const el = h('label', { class: 'field' }, h('span', { class: 'label' }, label, value), input);
+  const el = h('label', { class: 'field has-range' }, h('span', { class: 'label' }, label, value), input);
   const paint = () => {
     const v = Number(input.value);
     input.style.setProperty('--fill', `${((v - min) / (max - min)) * 100}%`);

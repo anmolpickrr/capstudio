@@ -36,6 +36,7 @@ html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
 .in-panel .file-chip { flex: 1; min-width: 0; gap: 8px; }
 .in-panel .file-chip .thumb { width: 26px; height: 26px; }
 .in-panel .file-chip b { font-size: 12.5px; max-width: 100%; }
+.in-panel .file-chip .file-name { width: 100%; font-size: 12.5px; }
 .in-panel .file-chip small { display: none; }
 .in-panel .flow { display: none; }
 .in-panel .bar-actions { gap: 2px; flex: none; }
@@ -106,9 +107,9 @@ html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
 .in-panel .section.folded { gap: 0; }
 
 /* property rows: label and slider on one line, like a properties panel */
-.in-panel label.field:has(> .range) { grid-template-columns: minmax(92px, 40%) minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 0; }
-.in-panel label.field:has(> .range) > .label { font-size: 11.5px; font-weight: 500; }
-.in-panel label.field:has(> .range) > .label .value { font: 500 11px var(--mono); color: var(--text-3); }
+.in-panel label.field.has-range { grid-template-columns: minmax(92px, 40%) minmax(0, 1fr); align-items: center; column-gap: 10px; row-gap: 0; }
+.in-panel label.field.has-range > .label { font-size: 11.5px; font-weight: 500; }
+.in-panel label.field.has-range > .label .value { font: 500 11px var(--mono); color: var(--text-3); }
 .in-panel .field { gap: 5px; }
 .in-panel .field > .label { font-size: 11.5px; }
 .in-panel .seg button { height: 26px; font-size: 11.5px; }
@@ -139,4 +140,4 @@ html.in-panel, html.in-panel body { height: 100%; overflow: hidden; }
 }
 
 /* the phone view needs a taller preview to read (until the preview is resized by hand) */
-.in-panel .editor:has(.stage.phone-view) { --pv-default: 58vh; }
+.in-panel .editor.phone-on { --pv-default: 58vh; }

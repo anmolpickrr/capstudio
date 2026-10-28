@@ -142,6 +142,7 @@ export class Stage {
   renderView() {
     const phone = this.view === 'phone';
     this.stage.classList.toggle('phone-view', phone);
+    this.root.closest('.editor')?.classList.toggle('phone-on', phone);
     for (const b of this.viewButtons || []) b.setAttribute('aria-pressed', String(b.dataset.view === this.view));
     this.platform = platformOf(state.safeZone);
     const caption = (state.project?.name || 'Your video').replace(/\.[^.]+$/, '');

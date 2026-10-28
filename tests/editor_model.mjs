@@ -187,5 +187,29 @@ const v1 = (p) => p.tracks.filter((t) => t.type === 'video').at(-1).id;
   check('starter layouts fit every format, above the main track', ok, extra);
   check('canvas sizes are even and in range', evenSize(1235, 0) === 1236 && evenSize(10, 640) === 640 && evenSize(99999, 0) === 7680 && evenSize('x', 1080) === 1080);
 }
+// Captions in sync with speech, in every style: each word is readable (85% opaque)
+// within 0.03 s of being spoken, even when the caption starts right on its first
+// word; and captions come on a moment before their first word without overlapping.
+{
+  const { TEMPLATES } = await import('../static/js/templates/library.js');
+  const { groupMotion, wordMotion } = await import('../static/js/engine/motion.js');
+  const { chunkWords } = await import('../static/js/engine/chunk.js');
+  const words = [0, 1, 2, 3].map((i) => ({ text: 'word', start: 10 + i * 0.32, end: 10 + i * 0.32 + 0.28 }));
+  const cap = { start: 10, end: 11.6, words };
+  let worst = 0, which = '';
+  for (const t of TEMPLATES) {
+    words.forEach((w, i) => {
+      for (let tt = cap.start; tt < cap.end; tt += 0.005) {
+        const g = groupMotion(t.style, cap, tt), wm = wordMotion(t.style, cap, i, tt);
+        if (wm.visible && g.opacity * wm.opacity >= 0.85) { if (tt - w.start > worst) { worst = tt - w.start; which = t.id; } break; }
+      }
+    });
+  }
+  check('every style shows each word as it is spoken', worst <= 0.03, `${worst.toFixed(3)} s late in ${which}`);
+  const ws = [{ text: 'One.', start: 1, end: 1.4 }, { text: 'Two', start: 3, end: 3.3 }, { text: 'three.', start: 3.32, end: 3.6 }, { text: 'Four', start: 3.62, end: 4 }];
+  const caps = chunkWords(ws, { maxWords: 2 });
+  const leadOk = Math.abs(caps[0].start - 0.88) < 1e-9 && Math.abs(caps[1].start - 2.88) < 1e-9 && caps[2].start === 3.6 && caps.every((c, i) => !caps[i + 1] || c.end <= caps[i + 1].start);
+  check('captions come on just before their first word, never over the last caption’s words', leadOk, JSON.stringify(caps.map((c) => [c.start, c.end])));
+}
 console.log(failed ? `${failed} failed` : 'all passed');
 process.exit(failed ? 1 : 0);

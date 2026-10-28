@@ -1,9 +1,9 @@
 <?xml version="1.0" encoding="UTF-8"?>
 <!-- Capstudio panel for Premiere Pro and After Effects 2022 and newer (CEP 11+). -->
-<ExtensionManifest Version="7.0" ExtensionBundleId="com.fastrr.capstudio" ExtensionBundleVersion="1.0.0"
+<ExtensionManifest Version="7.0" ExtensionBundleId="com.fastrr.capstudio" ExtensionBundleVersion="1.1.0"
   ExtensionBundleName="Capstudio" xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance">
   <ExtensionList>
-    <Extension Id="com.fastrr.capstudio.panel" Version="1.0.0"/>
+    <Extension Id="com.fastrr.capstudio.panel" Version="1.1.0"/>
   </ExtensionList>
   <ExecutionEnvironment>
     <HostList>
@@ -36,13 +36,17 @@
           <Menu>Capstudio</Menu>
           <Geometry>
             <Size>
-              <Height>820</Height>
-              <Width>1280</Width>
+              <Height>860</Height>
+              <Width>440</Width>
             </Size>
             <MinSize>
-              <Height>560</Height>
-              <Width>900</Width>
+              <Height>480</Height>
+              <Width>320</Width>
             </MinSize>
+            <MaxSize>
+              <Height>4000</Height>
+              <Width>4000</Width>
+            </MaxSize>
           </Geometry>
         </UI>
       </DispatchInfo>

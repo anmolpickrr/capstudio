@@ -52,10 +52,17 @@ export async function selectedClip() {
 // The whole open sequence (Premiere) or composition (After Effects): every clip that
 // plays, on any track, and the media files they use (each once):
 // { app, project, sequence, duration, topTrack, skipped, clips: [{ file, kind, start, end, inPoint, speed, track }], files: [File] }
+// The installed panel's version (panels from before versions were reported: 1).
+export const PANEL_VERSION = 2;
+let version = null;
+export function panelVersion() {
+  version ||= Promise.race([ask('capstudio:hello').then((d) => d?.version || 1, () => 1), new Promise((r) => setTimeout(() => r(1), 3000))]);
+  return version;
+}
+
 export async function wholeTimeline() {
   // panels installed before whole sequences existed don't answer this
-  const hello = await Promise.race([ask('capstudio:hello'), new Promise((r) => setTimeout(() => r(null), 3000))]);
-  if (!hello || hello.version < 2) {
+  if (await panelVersion() < PANEL_VERSION) {
     throw new Error('Your Capstudio panel needs a quick update to caption whole sequences. Close Premiere Pro and After Effects, run the install line again (the “Adobe panel” card on the Capstudio website), then reopen. “Caption the selected clip” still works.');
   }
   const d = await ask('capstudio:getTimeline');
@@ -84,7 +91,7 @@ const stemOf = (name) => (name || 'clip').replace(/\.[^.]*$/, '');
 export async function addToTimeline({ editable, onProgress, signal }) {
   const p = state.premiere, s = p.sequence, c = p.clip;
   const out = await exportOverlay({
-    name: c.name, file: `${stemOf(c.name)} captions.mov`,
+    name: c.name, file: `${stemOf(state.project?.name || c.name)} captions.mov`,
     info: { width: s.width, height: s.height, fps: s.fps, duration: c.end - c.start },
     captions: state.captions, style: state.style, spaced: spaced(), watermark: state.watermark,
     from: c.inPoint, speed: c.speed, onProgress, signal,
@@ -105,7 +112,7 @@ export async function addAsLayers() {
   const p = state.premiere, s = p.sequence;
   const info = state.project.info;
   const data = toAE(state.captions, state.style, s.width, s.height, {
-    fps: +s.fps.toFixed(3), duration: info.duration, name: `${stemOf(p.clip.name)} captions`, spaced: spaced(),
+    fps: +s.fps.toFixed(3), duration: info.duration, name: `${stemOf(state.project?.name || p.clip.name)} captions`, spaced: spaced(),
   });
   let watermark = null;
   const wm = state.watermark;

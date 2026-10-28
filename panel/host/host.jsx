@@ -148,6 +148,18 @@ var Capstudio = (function () {
     return true;
   }
 
+  // A new video track on top of the sequence (Premiere's QE scripting adds tracks;
+  // the regular API can't). True if one was added.
+  function addVideoTrack(seq) {
+    var before = seq.videoTracks.numTracks, qs;
+    try {
+      app.enableQE();
+      qs = qe.project.getActiveSequence();
+      qs.addTracks(1, before, 0, 0, 0, 0, 0, 0);
+    } catch (e) { return false; }
+    return app.project.activeSequence.videoTracks.numTracks > before;
+  }
+
   // Import the captions video into a "Capstudio" bin and put it on the first video
   // track above the clip that's empty for the clip's span; optionally add the SRT
   // as an editable caption track starting at the same time.
@@ -159,6 +171,11 @@ var Capstudio = (function () {
     if (!item) return fail('Premiere couldn\'t import the captions file.');
     for (t = Math.max(0, above + 1); t < seq.videoTracks.numTracks; t++) {
       if (isFree(seq.videoTracks[t], start, end)) { track = t; break; }
+    }
+    // none free: add one on top
+    if (track < 0 && addVideoTrack(seq)) {
+      seq = app.project.activeSequence;
+      track = seq.videoTracks.numTracks - 1;
     }
     if (track < 0) return fail('There\'s no empty video track above ' + (start === 0 && above >= 0 ? 'the edit' : 'the clip') + '. Add one (Sequence > Add Tracks), then click Add to timeline again. The captions file is in the Capstudio bin.');
     seq.videoTracks[track].overwriteClip(item, start);

@@ -39,6 +39,8 @@
       exists: function (p) { return fs.existsSync(p); },
       join: path.join, dirname: path.dirname, basename: path.basename,
       documents: function () { return path.join(os.homedir(), 'Documents'); },
+      // the panel's own folder (for loading host/host.jsx again)
+      extensionPath: function () { try { return window.__adobe_cep__.getSystemPath('extension'); } catch (e) { return ''; } },
     };
   }());
 
@@ -66,12 +68,28 @@
     return JSON.stringify(v).replace(SEPARATORS, function (c) { return '\\u' + c.charCodeAt(0).toString(16); });
   }
 
-  function call(fn, args) {
+  var APP = AE ? 'After Effects' : 'Premiere Pro';
+
+  // The app loads host/host.jsx when it starts. If it isn't there (the panel was
+  // installed or updated while the app was open, or the app skipped it), load it now.
+  function loadHost() {
+    var dir = host.extensionPath ? host.extensionPath() : '';
+    if (!dir) return Promise.resolve(false);
+    var file = String(dir).replace(/\\/g, '/').replace(/\/$/, '') + '/host/host.jsx';
+    return host.evalScript('try { $.evalFile(' + literal(file) + '); "loaded" } catch (e) { "failed: " + e }')
+      .then(function (r) { return r === 'loaded'; });
+  }
+  var hostReady = host.evalScript('typeof ' + HOST).then(function (t) { return t === 'object' ? true : loadHost(); }).catch(function () { return false; });
+
+  function call(fn, args, retried) {
     var code = HOST + '.' + fn + '(' + args.map(literal).join(',') + ')';
-    return host.evalScript(code).then(function (raw) {
+    return hostReady.then(function () { return host.evalScript(code); }).then(function (raw) {
       var out;
       try { out = JSON.parse(raw); } catch (e) {
-        throw new Error(raw && raw !== 'undefined' ? 'Premiere said: ' + raw : 'The panel couldn\'t talk to Premiere. Restart Premiere Pro and try again.');
+        // the host script wasn't loaded (or was an older one): load it again and retry once
+        if (!retried) { hostReady = loadHost(); return call(fn, args, true); }
+        throw new Error(raw && raw !== 'undefined' && raw !== 'EvalScript error.' ? APP + ' said: ' + raw
+          : 'The panel couldn\'t talk to ' + APP + '. Close and reopen the Capstudio panel (Window > Extensions > Capstudio), or restart ' + APP + '.');
       }
       if (!out.ok) throw new Error(out.error);
       return out;

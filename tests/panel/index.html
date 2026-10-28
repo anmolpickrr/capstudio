@@ -38,7 +38,10 @@
         ],
       });
       Object.assign(window, { __fake: fake, app: fake.app, ProjectItemType: fake.ProjectItemType, Sequence: fake.Sequence, __written: {} });
-      (0, eval)(await (await fetch('/__panel-src/host/host.jsx')).text());
+      // ?nohost=1: Premiere didn't load host/host.jsx; the bridge loads it itself ($.evalFile)
+      const nohost = new URLSearchParams(location.search).get('nohost') === '1';
+      if (nohost) window.$ = { evalFile: (p) => { (window.__evalFiles ||= []).push(p); const x = new XMLHttpRequest(); x.open('GET', p.replace(/^.*\/host\//, '/__panel-src/host/'), false); x.send(); (0, eval)(x.responseText); } };
+      else (0, eval)(await (await fetch('/__panel-src/host/host.jsx')).text());
       window.__capstudioHost = {
         appName: () => 'PPRO',
         evalScript: (code) => Promise.resolve((0, eval)(code)),
@@ -48,7 +51,12 @@
         mkdir: () => {}, exists: (p) => p in window.__written,
         join: (...a) => a.join('/'), dirname: (p) => p.replace(/\/[^/]*$/, ''), basename: (p) => p.split('/').pop(),
         documents: () => '/Users/me/Documents',
+        extensionPath: () => 'C:\\Users\\me\\AppData\\Roaming\\Adobe\\CEP\\extensions\\com.fastrr.capstudio',
       };
+      // ?old=1: a panel installed before it reported its version (doesn't answer "hello")
+      if (new URLSearchParams(location.search).get('old') === '1') {
+        window.addEventListener('message', (e) => { if (e.data?.type === 'capstudio:hello') e.stopImmediatePropagation(); });
+      }
       const s = document.createElement('script');
       s.src = '/__panel-src/bridge.js';
       document.body.append(s);

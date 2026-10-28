@@ -12,6 +12,8 @@ mkdir -p "$DEST"
 unzip -q "$TMP/panel.zip" -d "$DEST"
 rm -rf "$TMP"
 # Premiere only loads panels that aren't from Adobe's store once this is switched on.
-for v in 9 10 11 12 13 14; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
+for v in 9 10 11 12 13 14 15 16; do defaults write "com.adobe.CSXS.$v" PlayerDebugMode 1; done
+# macOS caches app settings; refresh them so Premiere and After Effects see the change
+killall cfprefsd 2>/dev/null || true
 echo
 echo 'Capstudio is installed. Restart Premiere Pro or After Effects, then open Window > Extensions > Capstudio.'

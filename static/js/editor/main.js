@@ -461,11 +461,22 @@ function openExport() {
     h('button', { type: 'button', 'data-v': v, 'aria-pressed': String(v === 1), onclick: (e) => { res.querySelectorAll('button').forEach((b) => b.setAttribute('aria-pressed', String(b === e.currentTarget))); } }, t)));
   const status = h('div', { id: 'ed-export-status' });
   const go = h('button', { class: 'btn brand lg', type: 'button', html: `${icon('export')}<span>Export video</span>`, onclick: run });
+  // the file's name: the project's (renaming it here renames the project)
+  const nameIn = h('input', { id: 'ed-export-name', class: 'ex-name-input', spellcheck: 'false', autocomplete: 'off', 'aria-label': 'File name', value: p.name });
+  const rename = () => {
+    const v = nameIn.value.replace(/[\u0000-\u001f\\/:*?"<>|]+/g, ' ').replace(/\s+/g, ' ').trim().slice(0, 120);
+    if (v && v !== ed.project.name) edit((x) => { x.name = v; });
+    nameIn.value = ed.project.name;
+  };
+  nameIn.addEventListener('change', rename);
+  nameIn.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); nameIn.blur(); } e.stopPropagation(); });
+  const fileName = h('label', { class: 'ex-name' }, h('span', { class: 'ex-name-label' }, 'File name'), h('span', { class: 'ex-name-box' }, nameIn, h('span', { class: 'ex-name-ext' }, '.mp4')));
   dlg.replaceChildren(h('div', { class: 'modal' },
     h('div', { class: 'modal-head' },
       h('div', {}, h('h2', {}, 'Export'), h('p', {}, `${p.name} · ${fmtTime(duration(p))} · ${p.fps} fps`)),
       h('button', { class: 'btn ghost icon-only', type: 'button', 'aria-label': 'Close', html: icon('close'), onclick: () => { exporting?.abort(); dlg.close(); } })),
     h('div', { class: 'modal-body' },
+      fileName,
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Size'), res),
       h('div', { class: 'field' }, h('span', { class: 'label' }, 'Quality'), q),
       canExport() ? h('p', { class: 'note info' }, 'Made on this computer, with its video hardware: nothing is uploaded. Keep this tab open until it’s done.')
@@ -475,6 +486,7 @@ function openExport() {
   dlg.showModal();
 
   async function run() {
+    rename();
     go.disabled = true;
     exporting = new AbortController();
     const bar = h('i'), msg = h('small', {}, 'Getting ready…');

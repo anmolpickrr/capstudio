@@ -49,7 +49,7 @@ function lengthSlider(ctrls, { label, key, min, max }) {
   const paint = () => { input.style.setProperty('--fill', `${((input.value - min) / (max - min)) * 100}%`); value.textContent = input.value; };
   input.addEventListener('input', paint);
   input.addEventListener('change', () => applyLength({ [key]: Number(input.value) }));
-  return ctrls.add(h('label', { class: 'field' }, h('span', { class: 'label' }, label, value), input),
+  return ctrls.add(h('label', { class: 'field has-range' }, h('span', { class: 'label' }, label, value), input),
     () => { if (document.activeElement !== input) input.value = state.style[key]; paint(); });
 }
 

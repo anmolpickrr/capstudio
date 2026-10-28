@@ -7,7 +7,7 @@ import { captionsFor, drawFrame, FORMATS, formatSize, frameRects, sameShape } fr
 import { api, sleep } from './api.js';
 import { browserCanExport, exportInBrowser, Unsupported } from './browserexport.js';
 import { check, fitStyle, resolve, zoneById, ZONES } from './safezones.js';
-import { ensureJob } from './session.js';
+import { chosenName, ensureJob } from './session.js';
 import { state } from './store.js';
 import { h } from './ui.js';
 
@@ -192,7 +192,7 @@ async function serverRender(p, quality, onProgress, signal) {
     if (r.status === 'running') onProgress(r.progress);
     if (r.status === 'done') {
       const blob = await (await fetch(`/api/jobs/${job}/download`)).blob();
-      return { blob, file: r.file, size: blob.size };
+      return { blob, file: chosenName(r.file), size: blob.size };
     }
   }
 }

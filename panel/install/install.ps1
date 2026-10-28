@@ -11,7 +11,7 @@ New-Item -ItemType Directory -Force -Path $dest | Out-Null
 Expand-Archive $zip -DestinationPath $dest -Force
 Remove-Item $zip
 # Premiere only loads panels that aren't from Adobe's store once this is switched on.
-foreach ($v in 9..14) {
+foreach ($v in 9..16) {
   $key = "HKCU:\Software\Adobe\CSXS.$v"
   if (-not (Test-Path $key)) { New-Item -Path $key | Out-Null }
   Set-ItemProperty -Path $key -Name PlayerDebugMode -Value '1' -Type String

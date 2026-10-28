@@ -44,6 +44,13 @@
       var list = clips.map(function (c) { return trackItem(c, 'Audio'); });
       return { get clips() { return children(list); }, isMuted: function () { return (opts.mutedAudio || []).indexOf(ti) >= 0; } };
     });
+    function addTrack() {
+      var list = [], ti = tracks.length;
+      tracks.push({ get clips() { return children(list); }, isMuted: function () { return false; },
+        overwriteClip: function (it, time) { log.push(['overwriteClip', ti, it.getMediaPath(), time]); list.push(trackItem({ name: it.name, path: it.getMediaPath(), start: time, end: time + 1 })); return true; } });
+      seq.videoTracks.numTracks = tracks.length; seq.videoTracks[ti] = tracks[ti];
+      log.push(['addTracks', 1]);
+    }
     var seq = {
       name: opts.name || 'Reel', frameSizeHorizontal: opts.width, frameSizeVertical: opts.height,
       timebase: String(Math.round(TB / opts.fps)),
@@ -66,7 +73,12 @@
         },
       },
     };
-    return { app: app, ProjectItemType: { CLIP: 1, BIN: 2, ROOT: 3, FILE: 4 }, Sequence: { CAPTION_FORMAT_SUBTITLE: 4 }, log: log };
+    // Premiere's QE scripting (opts.qe): adding a video track
+    if (opts.qe) {
+      app.enableQE = function () {};
+      var qe = { project: { getActiveSequence: function () { return { addTracks: function (n) { addTrack(); } }; } } };
+    }
+    return { qe: opts.qe ? qe : undefined, app: app, ProjectItemType: { CLIP: 1, BIN: 2, ROOT: 3, FILE: 4 }, Sequence: { CAPTION_FORMAT_SUBTITLE: 4 }, log: log };
   }
   root.makeFakePremiere = makeFake;
 }(this));
